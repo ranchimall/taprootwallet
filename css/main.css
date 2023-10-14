@@ -703,6 +703,7 @@ menu {
   display: grid;
   grid-template-columns: 1fr auto;
   gap: 1rem;
+  padding: 1rem;
 }
 
 #logo {
@@ -746,40 +747,72 @@ theme-toggle {
   font-weight: 700;
 }
 
-.header {
-  justify-items: center;
-  flex-direction: column;
-}
-
-#homepage {
+#main_card {
   display: grid;
-  gap: 3rem 1rem;
-  padding-top: 0;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto 1fr auto;
+  height: 100%;
+  width: 100%;
+  background-color: rgba(var(--foreground-color), 1);
 }
 
-#page_header {
-  padding: 1rem 0;
-  align-items: center;
-}
-#page_header button {
-  margin-left: -0.7rem;
-}
-#page_header h3 {
-  text-transform: capitalize;
-}
-
-.page h3.heading {
-  text-transform: capitalize;
-}
-.page > h3.heading {
-  margin-top: 2rem;
-}
-
-main {
+#main_navbar {
   display: flex;
+  background: rgba(var(--text-color), 0.03);
+}
+#main_navbar.hide-away {
+  position: absolute;
+}
+#main_navbar ul {
+  display: flex;
+  height: 100%;
+  width: 100%;
+}
+#main_navbar ul li {
+  width: 100%;
+}
+
+.nav-item {
+  position: relative;
+  display: flex;
+  flex: 1;
+  gap: 0.5rem;
+  width: 100%;
   flex-direction: column;
-  gap: 1.5rem;
-  padding: 1.5rem;
+  align-items: center;
+  justify-content: center;
+  padding: 0.5rem 0.3rem;
+  color: var(--text-color);
+  font-size: 0.8rem;
+  border-radius: 0.3rem;
+  font-weight: 500;
+}
+.nav-item .icon {
+  width: 2rem;
+  transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+.nav-item__title {
+  transition: opacity 0.2s, transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+.nav-item--active {
+  color: var(--accent-color);
+}
+.nav-item--active .icon {
+  fill: var(--accent-color);
+}
+.nav-item__indicator {
+  position: absolute;
+  bottom: 0;
+  width: 2rem;
+  height: 0.3rem;
+  background: var(--accent-color);
+  border-radius: 1rem 1rem 0 0;
+  z-index: 1;
+  view-transition-name: indicator;
+}
+
+#page_container {
+  padding: max(1rem, 1.5vw);
 }
 
 .primary-action {
@@ -922,6 +955,46 @@ main {
   }
   .popup__header {
     padding: 1rem 1.5rem 0 1.5rem;
+  }
+  #main_card {
+    grid-template-areas: "header" ".";
+    position: relative;
+    overflow: hidden;
+    box-shadow: 0 0.1rem 0.2rem rgba(0, 0, 0, 0.05), 0 1rem 3rem rgba(0, 0, 0, 0.2);
+  }
+  #main_card:not(.nav-hidden) {
+    grid-template-columns: auto 1fr;
+    grid-template-rows: auto 1fr;
+    grid-template-areas: "nav header" "nav .";
+  }
+  #main_header {
+    grid-area: header;
+  }
+  #main_navbar {
+    grid-area: nav;
+    border-top: none;
+    flex-direction: column;
+    background-color: rgba(37, 110, 255, 0.03);
+  }
+  #main_navbar ul {
+    flex-direction: column;
+    gap: 0.5rem;
+    padding: 0.3rem;
+  }
+  .nav-item {
+    flex-direction: row;
+    justify-content: flex-start;
+    padding: 0.8rem 1rem;
+  }
+  .nav-item__indicator {
+    width: 0.25rem;
+    height: 50%;
+    left: 0;
+    border-radius: 0 1rem 1rem 0;
+    bottom: auto;
+  }
+  body[data-theme=dark] #main_navbar {
+    background-color: rgba(0, 0, 0, 0.2);
   }
   #generate_address_popup,
 #convert_to_taproot_popup {
