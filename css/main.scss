@@ -716,6 +716,42 @@ main {
   gap: 1.5rem;
   padding: 1.5rem;
 }
+#flo_id_warning {
+  padding-bottom: 1.5rem;
+  border-bottom: thin solid rgba(var(--text-color), 0.3);
+  .icon {
+    height: 4rem;
+    width: 4rem;
+    padding: 1rem;
+    background-color: #ffc107;
+    border-radius: 3rem;
+    fill: rgba(0, 0, 0, 0.8);
+    margin-bottom: 1.5rem;
+  }
+}
+.generated-id-card {
+  display: grid;
+  gap: 1rem;
+  h5 {
+    margin-bottom: 0.3rem;
+  }
+}
+#convert_to_taproot_popup {
+  &::part(popup) {
+    view-transition-name: popup;
+  }
+  &::part(popup-header) {
+    view-transition-name: popup-header;
+  }
+  &::part(popup-body) {
+    view-transition-name: popup-body;
+  }
+}
+::view-transition-old(popup),
+::view-transition-new(popup) {
+  width: 100%;
+  height: 100%;
+}
 #transaction_result {
   display: grid;
   gap: 1.5rem;
@@ -786,8 +822,9 @@ main {
   .popup__header {
     padding: 1rem 1.5rem 0 1.5rem;
   }
-  #page_header {
-    padding: 1.5rem 0;
+  #generate_address_popup,
+  #convert_to_taproot_popup {
+    --width: 28rem;
   }
   main {
     sm-form {
