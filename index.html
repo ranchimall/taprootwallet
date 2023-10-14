@@ -49,7 +49,9 @@
                         </svg>
                         <span class="nav-item__title">
                             Send
-                        </span></a>
+                        </span>
+                        <div class="nav-item__indicator"></div>
+                    </a>
                 </li>
                 <li>
                     <a href="#/convert" class="nav-item interactive">
@@ -613,10 +615,13 @@
             },
             routingEnd(state) {
                 const { page } = state
+                if (!page)
+                    page = 'home'
                 const previousTarget = getRef('main_navbar').querySelector('.nav-item--active')
                 previousTarget?.classList.remove('nav-item--active')
                 previousTarget.querySelector('.nav-item__indicator')?.remove()
                 const target = getRef('main_navbar').querySelector(`.nav-item[href="#/${page}"]`)
+                console.log(target, page)
                 target.classList.add('nav-item--active')
                 target.append(html.node`<div class="nav-item__indicator"></div>`)
             }
