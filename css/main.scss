@@ -589,13 +589,22 @@ ul {
 #prompt_popup {
   flex-direction: column;
   h4 {
-    font-size: 1.2rem;
     margin-bottom: 1rem;
   }
-
-  .flex {
-    margin-top: 1rem;
+  sm-button {
+    margin: 0;
   }
+  .flex {
+    padding: 0;
+    margin-top: 1rem;
+    sm-button:first-of-type {
+      margin-right: 0.6rem;
+      margin-left: auto;
+    }
+  }
+}
+#prompt_message {
+  margin-bottom: 1.5rem;
 }
 
 .popup__header {

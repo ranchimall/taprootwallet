@@ -10,6 +10,14 @@
 
 <body class="hidden">
     <sm-notifications id="notification_drawer"></sm-notifications>
+    <sm-popup id="confirmation_popup">
+        <h4 id="confirm_title"></h4>
+        <p id="confirm_message" class="wrap-around"></p>
+        <div class="flex align-center gap-0-5 margin-left-auto">
+            <button class="button cancel-button">Cancel</button>
+            <button class="button button--primary confirm-button">OK</button>
+        </div>
+    </sm-popup>
     <main class="page">
         <header id="main_header">
             <a href="#/home" id="logo" class="app-brand">
@@ -121,7 +129,10 @@
                     </sm-input>
                 </div>
                 <sm-input id="fee_input" placeholder="Fee" required></sm-input>
-                <button class="button button--primary" type="submit" onclick="sendTx()">Send</button>
+                <div class="multi-state-button">
+                    <button id="send_tx_button" class="button button--primary" type="submit" disabled
+                        onclick="sendTx()">Send</button>
+                </div>
             </div>
         </sm-form>
     </main>
@@ -201,6 +212,19 @@
                 <sm-copy id="converted_address"></sm-copy>
             </div>
         </section>
+    </sm-popup>
+    <sm-popup id="transaction_result_popup">
+        <header slot="header" class="popup__header">
+            <button class="popup__header__close justify-self-start" onclick="closePopup()">
+                <svg class="icon" xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 0 24 24" width="24px"
+                    fill="#000000">
+                    <path d="M0 0h24v24H0V0z" fill="none" />
+                    <path
+                        d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12 19 6.41z" />
+                </svg>
+            </button>
+        </header>
+        <div id="transaction_result"></div>
     </sm-popup>
     <script src="https://unpkg.com/uhtml@3.0.1/es.js"></script>
     <script src="scripts/components.min.js" type="text/javascript"></script>
@@ -328,6 +352,31 @@
                 console.error(e);
                 return timestamp;
             }
+        }
+        // displays a popup for asking permission. Use this instead of JS confirm
+        const getConfirmation = (title, options = {}) => {
+            return new Promise(resolve => {
+                const { message = '', cancelText = 'Cancel', confirmText = 'OK', danger = false } = options
+                openPopup('confirmation_popup', true)
+                getRef('confirm_title').innerText = title;
+                getRef('confirm_message').innerText = message;
+                const cancelButton = getRef('confirmation_popup').querySelector('.cancel-button');
+                const confirmButton = getRef('confirmation_popup').querySelector('.confirm-button')
+                confirmButton.textContent = confirmText
+                cancelButton.textContent = cancelText
+                if (danger)
+                    confirmButton.classList.add('button--danger')
+                else
+                    confirmButton.classList.remove('button--danger')
+                confirmButton.onclick = () => {
+                    closePopup()
+                    resolve(true);
+                }
+                cancelButton.onclick = () => {
+                    closePopup()
+                    resolve(false);
+                }
+            })
         }
         // detect browser version
         function detectBrowser() {
@@ -519,7 +568,7 @@
             }
             if (!amount)
                 return '0';
-            return amount.toLocaleString(null, { style: 'currency', currency, minimumFractionDigits: 0, maximumFractionDigits: 8 })
+            return amount.toLocaleString(undefined, { style: 'currency', currency, minimumFractionDigits: 0, maximumFractionDigits: 8 })
         }
         function togglePrivateKeyVisibility(input) {
             const target = input.closest('sm-input')
@@ -575,6 +624,69 @@
                 convert()
             })
         }
+        async function sendTx() {
+            const senderPrivateKey = getRef('private_key_input').value.trim(),
+                receiverAddress = getRef('receiver_address_input').value.trim(),
+                amount = getRef('amount_input').value.trim(),
+                fee = getRef('fee_input').value.trim();
+            if (!senderPrivateKey || !receiverAddress || !amount || !fee)
+                return notify('Please fill all the fields', 'error')
+            const senderAddress = getTaprootAddress(senderPrivateKey).tr.address
+            if (btcOperator.validateAddress(senderAddress) !== 'bech32m')
+                return notify('Sender address is not a Taproot address', 'error')
+            const confirmation = await getConfirmation('Confirm transaction', {
+                message: `Send ${formatAmount(amount)} to ${receiverAddress} with a fee of ${formatAmount(fee)}?`,
+                confirmText: 'Send',
+            })
+            if (!confirmation)
+                return;
+            buttonLoader('send_tx_button', true)
+            createTx(senderPrivateKey, receiverAddress, amount, fee).then(txHex => {
+                btcOperator.broadcastTx(txHex).then(txid => {
+                    notify(`Transaction sent successfully. Txid: ${txid}`, 'success')
+                    showTransactionResult(true, txid)
+                }).catch(err => {
+                    notify(err, 'error')
+                    showTransactionResult(false, err)
+                }).finally(() => {
+                    buttonLoader('send_tx_button', false)
+                })
+            }).catch(err => {
+                notify(err, 'error')
+                buttonLoader('send_tx_button', false)
+            })
+        }
+        function showTransactionResult(success, result, options = {}) {
+            let { title, description } = options
+            if (!title)
+                title = success ? 'Transaction initiated' : 'Transaction failed'
+            if (!description)
+                description = success ? 'This might take upto 30 mins to complete and reflect on blockchain.' : result
+
+            renderElem(getRef('transaction_result'), html`
+                ${success ? html`
+                    <svg class="icon icon--success" xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 0 24 24" width="24px" fill="#000000"> <path d="M0 0h24v24H0z" fill="none" /> <path d="M9 16.2L4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4L9 16.2z" /> </svg>
+                ` : ''}
+                ${!success ? html`
+                    <svg class="icon icon--failed" xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 0 24 24" width="24px" fill="#000000"> <path d="M0 0h24v24H0z" fill="none" /> <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z" /> </svg>
+                ` : ''}
+                <h3 id="transaction_result__title">${title}</h3>
+                <div id="transaction_result__description"> ${description} </div>
+                ${success && result ? html`
+                    <div class="grid gap-1">
+						<a id="transaction_link" class="flex align-center button--colored" href=${`https://ranchimall.github.io/btcwallet/#/check_details?query=${result}`} style="margin-top: 1.5rem;" target="_blank">
+                            See transaction on blockchain
+                            <svg class="icon margin-left-0-5" xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 0 24 24" width="24px" fill="#000000"> <path d="M0 0h24v24H0z" fill="none"></path> <path d="M19 19H5V5h7V3H5c-1.11 0-2 .9-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2v-7h-2v7zM14 3v2h3.59l-9.83 9.83 1.41 1.41L19 6.41V10h2V3h-7z"></path> </svg>
+                        </a>
+                        <div class="grid">
+                            <span class="label">Transaction ID</span>
+                            <sm-copy class="justify-self-center" value=${result}></sm-copy>
+                        </div>
+                    </div>
+                ` : ''}
+            `)
+            openPopup('transaction_result_popup')
+        }
     </script>
     <script type="text/javascript">
         //This library uses API provided by chain.so (https://chain.so/)
@@ -607,45 +719,6 @@
         util.Sat_to_BTC = value => BigInt(parseFloat((value / SATOSHI_IN_BTC).toFixed(8)));
         util.BTC_to_Sat = value => BigInt(parseInt(value * SATOSHI_IN_BTC));
 
-        function get_fee_rate() {
-            return new Promise((resolve, reject) => {
-                fetch('https://api.blockchain.info/mempool/fees').then(response => {
-                    if (response.ok)
-                        response.json()
-                            .then(result => resolve(util.Sat_to_BTC(result.regular)))
-                            .catch(error => reject(error));
-                    else
-                        reject(response);
-                }).catch(error => reject(error))
-            })
-        }
-
-        const broadcastTx = rawTxHex => new Promise((resolve, reject) => {
-            let url = 'https://coinb.in/api/?uid=1&key=12345678901234567890123456789012&setmodule=bitcoin&request=sendrawtransaction';
-            fetch(url, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded'
-                },
-                body: "rawtx=" + rawTxHex
-            }).then(response => {
-                response.text().then(resultText => {
-                    let r = resultText.match(/<result>.*<\/result>/);
-                    if (!r)
-                        reject(resultText);
-                    else {
-                        r = r.pop().replace('<result>', '').replace('</result>', '');
-                        if (r == '1') {
-                            let txid = resultText.match(/<txid>.*<\/txid>/).pop().replace('<txid>', '').replace('</txid>', '');
-                            resolve(txid);
-                        } else if (r == '0') {
-                            let error = resultText.match(/<response>.*<\/response>/).pop().replace('<response>', '').replace('</response>', '');
-                            reject(decodeURIComponent(error.replace(/\+/g, " ")));
-                        } else reject(resultText);
-                    }
-                }).catch(error => reject(error))
-            }).catch(error => reject(error))
-        });
         function getTaprootAddress(wif) {
             if (!wif)
                 wif = coinjs.newKeys().wif
@@ -711,7 +784,7 @@
                 tx.sign(privKey_arrayform, undefined, new Uint8Array(32));
 
                 tx.finalize()
-                console.log(tx.hex);
+                return tx.hex
             } catch (e) {
                 console.error(e)
             }
