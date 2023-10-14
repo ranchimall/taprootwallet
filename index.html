@@ -27,22 +27,41 @@
             </a>
             <theme-toggle></theme-toggle>
         </header>
-        <menu>
+        <menu class="flex gap-0-5">
             <li>
-                <button class="button button--colored" onclick="openPopup('generate_address_popup')">
+                <button class="button button--colored primary-action" onclick="openPopup('generate_address_popup')">
+                    <svg class="icon" xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 0 24 24" width="24px"
+                        fill="#000000">
+                        <path d="M0 0h24v24H0V0z" fill="none" />
+                        <path
+                            d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm5 11h-4v4h-2v-4H7v-2h4V7h2v4h4v2z" />
+                    </svg>
                     Create new address
                 </button>
-                <button class="button button--colored" onclick="openPopup('convert_to_taproot_popup')">
-                    Convert to Taproot address
+            </li>
+            <li>
+                <button class="button button--colored primary-action" onclick="openPopup('convert_to_taproot_popup')">
+                    <svg class="icon" xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 0 24 24" width="24px"
+                        fill="#000000">
+                        <path d="M0 0h24v24H0V0z" fill="none" />
+                        <path d="M6.99 11L3 15l3.99 4v-3H14v-2H6.99v-3zM21 9l-3.99-4v3H10v2h7.01v3L21 9z" />
+                    </svg>
+                    Convert to Taproot
                 </button>
             </li>
         </menu>
         <h3>
-            Send Transaction
+            Perform Transaction
         </h3>
         <sm-form>
             <div class="flex flex-direction-column gap-0-5">
-                <h4>Sender</h4>
+                <div class="flex space-between align-center">
+                    <h4>Sender</h4>
+                    <button id="check_balance_button" class="button button--small button--colored" disabled
+                        onclick="checkBalance()">
+                        Check balance
+                    </button>
+                </div>
                 <sm-input id="private_key_input" placeholder="Sender's private key" data-private-key
                     class="password-field" type="password" required>
                     <svg class="icon" slot="icon" xmlns="http://www.w3.org/2000/svg" enable-background="new 0 0 24 24"
@@ -77,13 +96,15 @@
                         </svg>
                     </label>
                 </sm-input>
+                <div id="sender_balance_container" class="flex align-center gap-0-3 hidden"></div>
             </div>
             <div class="flex flex-direction-column gap-1">
                 <div class="flex flex-direction-column gap-0-5">
                     <h4>Receiver</h4>
                     <sm-input id="receiver_address_input" placeholder="Receiver's address" data-btc-address
                         required></sm-input>
-                    <sm-input id="amount_input" placeholder="Amount" type="number" required>
+                    <sm-input id="amount_input" placeholder="Amount" type="number" step="0.00000001" min="0.0000001"
+                        error-text="Amount should be grater than 0.0000001 BTC" required>
                         <div class="currency-symbol flex" slot="icon">
                             <svg class="icon" xmlns="http://www.w3.org/2000/svg" enable-background="new 0 0 24 24"
                                 height="24px" viewBox="0 0 24 24" width="24px" fill="#000000">
@@ -491,11 +512,46 @@
         ]
     </script>
     <script type="text/javascript">
+        function formatAmount(amount = 0, currency = 'btc') {
+            // check if amount is a string and convert it to a number
+            if (typeof amount === 'string') {
+                amount = parseFloat(amount)
+            }
+            if (!amount)
+                return '0';
+            return amount.toLocaleString(null, { style: 'currency', currency, minimumFractionDigits: 0, maximumFractionDigits: 8 })
+        }
         function togglePrivateKeyVisibility(input) {
             const target = input.closest('sm-input')
             target.type = target.type === 'password' ? 'text' : 'password';
             target.focusIn()
         }
+        function checkBalance() {
+            const wif = getRef('private_key_input').value.trim()
+            if (!wif)
+                return notify(`Please enter sender's private key to check balance`)
+            getRef('sender_balance_container').classList.remove('hidden')
+            renderElem(getRef('sender_balance_container'), html`
+                Loading balance...<sm-spinner></sm-spinner>
+            `)
+            const { tr: { address } } = getTaprootAddress(wif)
+            btcOperator.getBalance(address).then(balance => {
+                console.log(balance)
+                renderElem(getRef('sender_balance_container'), html`
+                    Balance: <b>${formatAmount(balance)}</b>
+                `)
+            }).catch(err => {
+                notify(e, 'error')
+            })
+        }
+        getRef('private_key_input').addEventListener('input', e => {
+            if (!e.target.isValid) {
+                getRef('sender_balance_container').classList.add('hidden')
+                getRef('check_balance_button').disabled = true
+            } else {
+                getRef('check_balance_button').disabled = false
+            }
+        })
         getRef('convert_to_taproot_form').addEventListener('invalid', () => {
             if (!document.startViewTransition) {
                 getRef('converted_address_wrapper').classList.add('hidden')
