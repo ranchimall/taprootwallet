@@ -53,7 +53,7 @@
                         <div class="nav-item__indicator"></div>
                     </a>
                 </li>
-                <li>
+                <li class="hidden">
                     <a href="#/convert" class="nav-item interactive">
                         <svg class="icon" xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 0 24 24"
                             width="24px" fill="#000000">
@@ -62,7 +62,8 @@
                         </svg>
                         <span class="nav-item__title">
                             Convert
-                        </span></a>
+                        </span>
+                    </a>
                 </li>
             </ul>
         </nav>
@@ -569,6 +570,60 @@
                 }
             }
         }
+        let currentSubscriber = null;
+        /**
+         * @param {any} initialValue - initial value for the signal
+         * @param {function} [Optional] callback - function to be called when the signal changes
+         * @returns {array} - array containing getter and setter for the signal
+         * @example
+         * const [getCount, setCount] = $signal(0);
+         */
+        function $signal(initialValue, callback) {
+            let value = initialValue;
+            const subscribers = new Set();
+            let hasCustomSubscriber = false;
+            function getter(subscriber) {
+                if (currentSubscriber) {
+                    subscribers.add(currentSubscriber);
+                }
+                if (!hasCustomSubscriber && subscriber) {
+                    subscribers.add(subscriber)
+                    hasCustomSubscriber = true
+                }
+                return value;
+            }
+
+            function setter(newValue) {
+                if (newValue === value) return;
+                value = newValue;
+                for (const subscriber of subscribers) {
+                    subscriber();
+                }
+            }
+            return [getter, setter];
+        }
+        /**
+         * 
+         * @param {function} fn - function that will run if any of its dependent signals change
+         * @example
+         * $effect(() => {
+         * console.log(count());
+         * } 
+         * @returns {void}
+         */
+        async function $effect(fn) {
+            currentSubscriber = fn;
+            const result = fn();
+            try {
+                if (result instanceof Promise) {
+                    await result;
+                }
+            } catch (e) {
+                console.error(e)
+            } finally {
+                currentSubscriber = null;
+            }
+        }
     </script>
     <script type="text/javascript">
         window.smCompConfig = {
@@ -576,7 +631,7 @@
                 {
                     selector: '[data-btc-address]',
                     customValidation: (value) => {
-                        if (!value) return { isValid: false, errorText: 'Please enter a FLO address' }
+                        if (!value) return { isValid: false, errorText: 'Please enter a BTC address' }
                         return {
                             isValid: btcOperator.validateAddress(value),
                             errorText: `Invalid address.<br> It usually starts with "1", "3" or "bc1"`
@@ -631,70 +686,129 @@
             renderHome(state)
         })
         router.addRoute('home', renderHome)
+        const [suggestedFee, setSuggestedFee] = $signal(0);
+        const [suggestedFeeStatus, setSuggestedFeeStatus] = $signal(['idle'])
+        const [feeType, setFeeType] = $signal('suggested')
         function renderHome(state) {
-            console.log(state)
-            renderElem(getRef('page_container'), html`
-                <div class="flex flex-direction-column gap-1-5">
-                    <menu class="flex gap-0-5">
-                        <li>
-                            <button class="button button--colored primary-action" onclick="openPopup('generate_address_popup')">
-                                <svg class="icon" xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 0 24 24" width="24px" fill="#000000"> <path d="M0 0h24v24H0V0z" fill="none" /> <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm5 11h-4v4h-2v-4H7v-2h4V7h2v4h4v2z" /> </svg>
-                                Create new address
-                            </button>
-                        </li>
-                        <li>
-                            <button class="button button--colored primary-action" onclick="openPopup('convert_to_taproot_popup')">
-                                <svg class="icon" xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 0 24 24" width="24px" fill="#000000"> <path d="M0 0h24v24H0V0z" fill="none" /> <path d="M6.99 11L3 15l3.99 4v-3H14v-2H6.99v-3zM21 9l-3.99-4v3H10v2h7.01v3L21 9z" /> </svg>
-                                Retrieve Taproot address
-                            </button>
-                        </li>
-                    </menu>
-                    <h3>
-                        Perform Transaction
-                    </h3>
-                    <sm-form>
-                        <div class="flex flex-direction-column gap-0-5">
-                            <div class="flex space-between align-center">
-                                <h4>Sender</h4>
-                                <button id="check_balance_button" class="button button--small button--colored" disabled onclick="checkBalance()">
-                                    Check balance
+            $effect(() => {
+                let feeSection = ''
+                if (feeType() === 'suggested') {
+                    const [status, message] = suggestedFeeStatus()
+                    if (status === 'idle') {
+                        feeSection = html` <p>*Fee will be calculated after you enter all the details</p> `
+                    } else if (status === 'calculating') {
+                        feeSection = html`<div class="flex align-center"> Calculating fee...<sm-spinner></sm-spinner> </div>`
+                    } else if (status === 'error') {
+                        feeSection = html`<p class="error">${message}</p>`
+                    } else if (status === 'success') {
+                        feeSection = html`
+                            <sm-input id="fee_input" placeholder="Suggested fee" type="number" value=${suggestedFee()} step="0.00000001" min="0.0000001" readonly animate required></sm-input>
+                        `
+                    }
+                } else {
+                    feeSection = html`
+                        <sm-input id="fee_input" placeholder="Custom fee" type="number" step="0.00000001" min="0.0000001" error-text="Minimum fee is 0.0000001BTC" animate required>
+                        </sm-input>
+                    `
+                }
+                renderElem(getRef('page_container'), html`
+                    <div class="flex flex-direction-column gap-1-5">
+                        <menu class="flex gap-0-5">
+                            <li>
+                                <button class="button button--colored primary-action" onclick="openPopup('generate_address_popup')">
+                                    <svg class="icon" xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 0 24 24" width="24px" fill="#000000"> <path d="M0 0h24v24H0V0z" fill="none" /> <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm5 11h-4v4h-2v-4H7v-2h4V7h2v4h4v2z" /> </svg>
+                                    Create new address
                                 </button>
-                            </div>
-                            <sm-input id="private_key_input" placeholder="Sender's private key" data-private-key class="password-field" type="password" oninput=${handlePrivateKeyInput} required>
-                                <svg class="icon" slot="icon" xmlns="http://www.w3.org/2000/svg" enable-background="new 0 0 24 24" height="24px" viewBox="0 0 24 24" width="24px" fill="#000000"> <g> <rect fill="none" height="24" width="24"></rect> </g> <g> <path d="M21,10h-8.35C11.83,7.67,9.61,6,7,6c-3.31,0-6,2.69-6,6s2.69,6,6,6c2.61,0,4.83-1.67,5.65-4H13l2,2l2-2l2,2l4-4.04L21,10z M7,15c-1.65,0-3-1.35-3-3c0-1.65,1.35-3,3-3s3,1.35,3,3C10,13.65,8.65,15,7,15z"> </path> </g> </svg>
-                                <label slot="right" class="interact">
-                                    <input type="checkbox" class="hidden" autocomplete="off" readonly="" onchange="togglePrivateKeyVisibility(this)">
-                                    <svg class="icon invisible" xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 0 24 24" width="24px" fill="#000000"> <title>Hide password</title> <path d="M0 0h24v24H0zm0 0h24v24H0zm0 0h24v24H0zm0 0h24v24H0z" fill="none"></path> <path d="M12 7c2.76 0 5 2.24 5 5 0 .65-.13 1.26-.36 1.83l2.92 2.92c1.51-1.26 2.7-2.89 3.43-4.75-1.73-4.39-6-7.5-11-7.5-1.4 0-2.74.25-3.98.7l2.16 2.16C10.74 7.13 11.35 7 12 7zM2 4.27l2.28 2.28.46.46C3.08 8.3 1.78 10.02 1 12c1.73 4.39 6 7.5 11 7.5 1.55 0 3.03-.3 4.38-.84l.42.42L19.73 22 21 20.73 3.27 3 2 4.27zM7.53 9.8l1.55 1.55c-.05.21-.08.43-.08.65 0 1.66 1.34 3 3 3 .22 0 .44-.03.65-.08l1.55 1.55c-.67.33-1.41.53-2.2.53-2.76 0-5-2.24-5-5 0-.79.2-1.53.53-2.2zm4.31-.78l3.15 3.15.02-.16c0-1.66-1.34-3-3-3l-.17.01z"> </path> </svg>
-                                    <svg class="icon visible" xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 0 24 24" width="24px" fill="#000000"> <title>Show password</title> <path d="M0 0h24v24H0z" fill="none"></path> <path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"> </path> </svg>
-                                </label>
-                            </sm-input>
-                            <div id="sender_balance_container" class="flex align-center gap-0-3 hidden"></div>
-                        </div>
-                        <div class="flex flex-direction-column gap-1">
+                            </li>
+                            <li>
+                                <button class="button button--colored primary-action" onclick="openPopup('convert_to_taproot_popup')">
+                                    <svg class="icon" xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 0 24 24" width="24px" fill="#000000"> <path d="M0 0h24v24H0V0z" fill="none" /> <path d="M6.99 11L3 15l3.99 4v-3H14v-2H6.99v-3zM21 9l-3.99-4v3H10v2h7.01v3L21 9z" /> </svg>
+                                    Retrieve Taproot address
+                                </button>
+                            </li>
+                        </menu>
+                        <h3>
+                            Perform Transaction
+                        </h3>
+                        <sm-form id="send_tx_form" onvalid=${calculateSuggestedFee} oninvalid=${handleInvalidForm} ?skip-submit=${feeType() === 'suggested'}>
                             <div class="flex flex-direction-column gap-0-5">
-                                <h4>Receiver</h4>
-                                <ul id="receivers_container" class="grid gap-1">
-                                    <li class="grid gap-0-5 receiver-wrapper">
-                                        <sm-input class="receiver-address" placeholder="Receiver's address" data-btc-address required></sm-input>
-                                        <sm-input class="receiver-amount" placeholder="Amount" type="number" step="0.00000001" min="0.0000001" error-text="Amount should be grater than 0.0000001 BTC" required>
-                                            <div class="currency-symbol flex" slot="icon">
-                                                <svg class="icon" xmlns="http://www.w3.org/2000/svg" enable-background="new 0 0 24 24" height="24px" viewBox="0 0 24 24" width="24px" fill="#000000"> <g> <rect fill="none" height="24" width="24"></rect> </g> <g> <path d="M17.06,11.57C17.65,10.88,18,9.98,18,9c0-1.86-1.27-3.43-3-3.87L15,3h-2v2h-2V3H9v2H6v2h2v10H6v2h3v2h2v-2h2v2h2v-2 c2.21,0,4-1.79,4-4C19,13.55,18.22,12.27,17.06,11.57z M10,7h4c1.1,0,2,0.9,2,2s-0.9,2-2,2h-4V7z M15,17h-5v-4h5c1.1,0,2,0.9,2,2 S16.1,17,15,17z"> </path> </g> </svg>
-                                            </div>
-                                        </sm-input>
-                                    </li>
-                                </ul>
-                                <button class="button button--colored button--small margin-right-auto" onclick="addReceiver()">
-                                    Add receiver
-                                </button>
+                                <div class="flex space-between align-center">
+                                    <h4>Sender</h4>
+                                    <button id="check_balance_button" class="button button--small button--colored" disabled onclick="checkBalance()">
+                                        Check balance
+                                    </button>
+                                </div>
+                                <sm-input id="private_key_input" placeholder="Sender's private key" data-private-key class="password-field" type="password" oninput=${handlePrivateKeyInput} animate required>
+                                    <svg class="icon" slot="icon" xmlns="http://www.w3.org/2000/svg" enable-background="new 0 0 24 24" height="24px" viewBox="0 0 24 24" width="24px" fill="#000000"> <g> <rect fill="none" height="24" width="24"></rect> </g> <g> <path d="M21,10h-8.35C11.83,7.67,9.61,6,7,6c-3.31,0-6,2.69-6,6s2.69,6,6,6c2.61,0,4.83-1.67,5.65-4H13l2,2l2-2l2,2l4-4.04L21,10z M7,15c-1.65,0-3-1.35-3-3c0-1.65,1.35-3,3-3s3,1.35,3,3C10,13.65,8.65,15,7,15z"> </path> </g> </svg>
+                                    <label slot="right" class="interact">
+                                        <input type="checkbox" class="hidden" autocomplete="off" readonly="" onchange="togglePrivateKeyVisibility(this)">
+                                        <svg class="icon invisible" xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 0 24 24" width="24px" fill="#000000"> <title>Hide password</title> <path d="M0 0h24v24H0zm0 0h24v24H0zm0 0h24v24H0zm0 0h24v24H0z" fill="none"></path> <path d="M12 7c2.76 0 5 2.24 5 5 0 .65-.13 1.26-.36 1.83l2.92 2.92c1.51-1.26 2.7-2.89 3.43-4.75-1.73-4.39-6-7.5-11-7.5-1.4 0-2.74.25-3.98.7l2.16 2.16C10.74 7.13 11.35 7 12 7zM2 4.27l2.28 2.28.46.46C3.08 8.3 1.78 10.02 1 12c1.73 4.39 6 7.5 11 7.5 1.55 0 3.03-.3 4.38-.84l.42.42L19.73 22 21 20.73 3.27 3 2 4.27zM7.53 9.8l1.55 1.55c-.05.21-.08.43-.08.65 0 1.66 1.34 3 3 3 .22 0 .44-.03.65-.08l1.55 1.55c-.67.33-1.41.53-2.2.53-2.76 0-5-2.24-5-5 0-.79.2-1.53.53-2.2zm4.31-.78l3.15 3.15.02-.16c0-1.66-1.34-3-3-3l-.17.01z"> </path> </svg>
+                                        <svg class="icon visible" xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 0 24 24" width="24px" fill="#000000"> <title>Show password</title> <path d="M0 0h24v24H0z" fill="none"></path> <path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"> </path> </svg>
+                                    </label>
+                                </sm-input>
+                                <div id="sender_balance_container" class="flex align-center gap-0-3 hidden"></div>
                             </div>
-                            <sm-input id="fee_input" placeholder="Fee" required></sm-input>
-                            <div class="multi-state-button">
-                                <button id="send_tx_button" class="button button--primary" type="submit" disabled onclick="sendTx()">Send</button>
+                            <div class="flex flex-direction-column gap-1">
+                                <div class="flex flex-direction-column gap-0-5">
+                                    <h4>Receiver</h4>
+                                    <ul id="receivers_container" class="grid gap-1">
+                                        <li class="grid gap-0-5 receiver-wrapper">
+                                            <sm-input class="receiver-address" placeholder="Receiver's address" data-btc-address animate required></sm-input>
+                                            <sm-input class="receiver-amount" placeholder="Amount" type="number" step="0.00000001" min="0.0000001" error-text="Amount should be grater than 0.0000001 BTC" animate required>
+                                                <div class="currency-symbol flex" slot="icon">
+                                                    <svg class="icon" xmlns="http://www.w3.org/2000/svg" enable-background="new 0 0 24 24" height="24px" viewBox="0 0 24 24" width="24px" fill="#000000"> <g> <rect fill="none" height="24" width="24"></rect> </g> <g> <path d="M17.06,11.57C17.65,10.88,18,9.98,18,9c0-1.86-1.27-3.43-3-3.87L15,3h-2v2h-2V3H9v2H6v2h2v10H6v2h3v2h2v-2h2v2h2v-2 c2.21,0,4-1.79,4-4C19,13.55,18.22,12.27,17.06,11.57z M10,7h4c1.1,0,2,0.9,2,2s-0.9,2-2,2h-4V7z M15,17h-5v-4h5c1.1,0,2,0.9,2,2 S16.1,17,15,17z"> </path> </g> </svg>
+                                                </div>
+                                            </sm-input>
+                                        </li>
+                                    </ul>
+                                    <button class="button button--colored button--small margin-right-auto" onclick="addReceiver()">
+                                        Add receiver
+                                    </button>
+                                </div>
+                                <div class="grid gap-0-5">
+                                    <div class="flex align-center space-between gap-1">
+                                        <h4>Fee</h4>
+                                        <sm-chips onchange=${e => { setFeeType(e.target.value); calculateSuggestedFee(); }}>
+                                            <sm-chip value="suggested" selected>Suggested</sm-chip>
+                                            <sm-chip value="custom">Custom</sm-chip>
+                                        </sm-chips>
+                                    </div>
+                                    ${feeSection}
+                                </div>
+                                <div class="multi-state-button">
+                                    <button id="send_tx_button" class="button button--primary" type="submit" disabled onclick="sendTx()">Send</button>
+                                </div>
                             </div>
-                        </div>
-                    </sm-form>
-                </div>
-            `)
+                        </sm-form>
+                    </div>
+                `)
+            })
+        }
+        async function calculateSuggestedFee() {
+            try {
+                getRef('send_tx_button').disabled = true
+                if (feeType() === 'custom') {
+
+                } else {
+                    if (!getRef('send_tx_form').isFormValid) return
+                    const { senderPrivateKey, senderAddress, receivers, receiverAddresses, receiverAmounts } = getTransactionDetails()
+                    if (!senderPrivateKey || !senderAddress || !receiverAddresses.length || !receiverAmounts.length)
+                        return
+                    setSuggestedFeeStatus(['calculating'])
+                    const { fee } = await createTx(senderPrivateKey, receiverAddresses, receiverAmounts)
+                    setSuggestedFee(fee)
+                    setSuggestedFeeStatus(['success'])
+                    getRef('send_tx_button').disabled = false
+                }
+            } catch (e) {
+                console.error(e)
+                setSuggestedFeeStatus(['error', e])
+            }
+        }
+        function handleInvalidForm() {
+            setSuggestedFee(0);
+            setSuggestedFeeStatus(['idle']);
+            getRef('send_tx_button').disabled = true
         }
         router.addRoute('convert', (state) => {
             renderElem(getRef('page_container'), html`
@@ -718,20 +832,25 @@
             `)
             const { tr: { address } } = getTaprootAddress(wif)
             btcOperator.getBalance(address).then(balance => {
-                console.log(balance)
                 renderElem(getRef('sender_balance_container'), html`
-                    Balance: <b>${formatAmount(balance)}</b>
+                    <div class="grid gap-1" style="padding: 1rem; border-radius: 0.5rem; border: solid thin rgba(var(--text-color),0.3)">
+                        <div class="grid">
+                            <p class="label">Sender address</p>
+                            <sm-copy value=${address}><p>${address}<p></sm-copy>
+                        </div>
+                        <p>
+                            Balance: <b>${formatAmount(balance)}</b>
+                        </p>
+                    </div>
                 `)
             }).catch(err => {
                 notify(e, 'error')
             })
         }
         function handlePrivateKeyInput(e) {
+            getRef('check_balance_button').disabled = !e.target.isValid
             if (!e.target.isValid) {
                 getRef('sender_balance_container').classList.add('hidden')
-                getRef('check_balance_button').disabled = true
-            } else {
-                getRef('check_balance_button').disabled = false
             }
         }
         getRef('convert_to_taproot_form').addEventListener('invalid', () => {
@@ -758,7 +877,7 @@
             })
         }
         function addReceiver() {
-            getRef('receivers_container').append(html.node`
+            getRef('receivers_container').append(html.node/*html*/`
                 <div class="grid gap-0-5 receiver-wrapper">
                     <sm-input class="receiver-address" placeholder="Receiver's address" data-btc-address
                         required></sm-input>
@@ -776,8 +895,11 @@
         function removeReceiver(button) {
             button.closest('.receiver-wrapper').remove()
         }
-        async function sendTx() {
+        function getTransactionDetails() {
             const senderPrivateKey = getRef('private_key_input').value.trim();
+            const senderAddress = getTaprootAddress(senderPrivateKey).tr.address;
+            if (btcOperator.validateAddress(senderAddress) !== 'bech32m')
+                return notify('Sender address is not a Taproot address', 'error')
             const receivers = [...getRef('receivers_container').children].reduce((receivers, receiver) => {
                 const receiverAddress = receiver.querySelector('.receiver-address').value.trim()
                 const amount = parseFloat(receiver.querySelector('.receiver-amount').value.trim())
@@ -786,54 +908,56 @@
                 receivers[receiverAddress] += amount
                 return receivers
             }, {})
-            console.log(receivers, Object.keys(receivers), Object.values(receivers))
-            const fee = parseFloat(getRef('fee_input').value.trim())
-            const senderAddress = getTaprootAddress(senderPrivateKey).tr.address
-            if (btcOperator.validateAddress(senderAddress) !== 'bech32m')
-                return notify('Sender address is not a Taproot address', 'error')
-            const confirmation = await getConfirmation('Confirm transaction', {
-                message: html`
-                    <div class="grid gap-1-5">
-                        <div class="grid gap-0-5"> 
-                            <span class="label">Sender address</span>
-                            <sm-copy value=${senderAddress}></sm-copy>
-                        </div>
-                        <div class="grid gap-0-5">
-                            <span class="label">Receivers</span>
-                            <div class="grid gap-0-3">
-                                ${Object.entries(receivers).map(([address, amount]) => html.node`
-                                    <div class="grid gap-0-5" style="padding:0.5rem;border:solid thin rgba(var(--text-color),0.3);border-radius: 0.3rem;">
-                                        <b>${address}</b>
-                                        <b>${formatAmount(amount)}</b>
-                                    </div>
-                                `)}
+            const receiverAddresses = Object.keys(receivers)
+            const receiverAmounts = Object.values(receivers)
+            const fee = parseFloat(getRef('fee_input')?.value.trim()) || 0
+            return { senderPrivateKey, senderAddress, receivers, receiverAddresses, receiverAmounts, fee }
+        }
+        async function sendTx() {
+            try {
+                const { senderPrivateKey, senderAddress, receivers, receiverAddresses, receiverAmounts, fee } = getTransactionDetails()
+                const confirmation = await getConfirmation('Confirm transaction', {
+                    message: html`
+                        <div class="grid gap-1-5">
+                            <div class="grid"> 
+                                <span class="label">Sender address</span>
+                                <sm-copy value=${senderAddress}></sm-copy>
+                            </div>
+                            <div class="grid">
+                                <span class="label">Receivers</span>
+                                <div class="grid gap-0-3">
+                                    ${Object.entries(receivers).map(([address, amount]) => html.node`
+                                        <div class="grid gap-0-5" style="padding:0.5rem;border:solid thin rgba(var(--text-color),0.3);border-radius: 0.3rem;">
+                                            <b>${address}</b>
+                                            <b>${formatAmount(amount)}</b>
+                                        </div>
+                                    `)}
+                                </div>
+                            </div>
+                            <div class="grid">
+                                <span class="label">Fee</span>
+                                <b>${formatAmount(fee)}</b>
                             </div>
                         </div>
-                        <div class="grid gap-0-5">
-                            <span class="label">Fee</span>
-                            <b>${formatAmount(fee)}</b>
-                        </div>
-                    </div>
-                `,
-                confirmText: 'Send',
-            })
-            if (!confirmation)
-                return;
-            buttonLoader('send_tx_button', true)
-            createTx(senderPrivateKey, Object.keys(receivers), Object.values(receivers), fee).then(txHex => {
+                    `,
+                    confirmText: 'Send',
+                })
+                if (!confirmation)
+                    return;
+                buttonLoader('send_tx_button', true)
+                const { txHex } = await createTx(senderPrivateKey, receiverAddresses, receiverAmounts, fee)
+                console.log(txHex)
                 btcOperator.broadcastTx(txHex).then(txid => {
-                    notify(`Transaction sent successfully. Txid: ${txid}`, 'success')
                     showTransactionResult(true, txid)
                 }).catch(err => {
-                    notify(err, 'error')
                     showTransactionResult(false, err)
                 }).finally(() => {
                     buttonLoader('send_tx_button', false)
                 })
-            }).catch(err => {
-                notify(err, 'error')
+            } catch (e) {
+                notify(e, 'error')
                 buttonLoader('send_tx_button', false)
-            })
+            }
         }
         function showTransactionResult(success, result, options = {}) {
             let { title, description } = options
@@ -889,8 +1013,20 @@
 
         const util = {};
 
-        util.Sat_to_BTC = value => BigInt(parseFloat((value / SATOSHI_IN_BTC).toFixed(8)));
-        util.BTC_to_Sat = value => BigInt(parseInt(value * SATOSHI_IN_BTC));
+        util.Sat_to_BTC = value => parseFloat((value / SATOSHI_IN_BTC).toFixed(8));
+        util.BTC_to_Sat = value => parseInt(value * SATOSHI_IN_BTC);
+        function get_fee_rate() {
+            return new Promise((resolve, reject) => {
+                fetch('https://api.blockchain.info/mempool/fees').then(response => {
+                    if (response.ok)
+                        response.json()
+                            .then(result => resolve(util.Sat_to_BTC(result.regular)))
+                            .catch(error => reject(error));
+                    else
+                        reject(response);
+                }).catch(error => reject(error))
+            })
+        }
 
         const fetch_api = function (api, json_res = true) {
             return new Promise((resolve, reject) => {
@@ -951,39 +1087,48 @@
          * @param {array} array of amounts in BTC
          * @param {number} fee in BTC
          */
-        async function createTx(senderPrivateKey, receivers = [], amounts = [], fee) {
-            try {
-                const { tr: { address, script } } = getTaprootAddress(senderPrivateKey)
-                const opts = {};
-                const tx = new taproot.Transaction(opts);
-                const totalAmount = amounts.reduce((total, amount) => total + amount, 0)
-                const amountInSat = util.BTC_to_Sat(totalAmount)
-                // check if sender has enough balance
-                btcOperator.getBalance(address).then(balance => {
-                    if (balance < totalAmount + fee)
-                        throw new Error(`Insufficient balance. Balance: ${balance}, Required: ${totalAmount + fee}`)
-                }).catch(err => {
-                    throw new Error(err)
-                })
-                await addUTXOs(tx, tr, [address], util.BTC_to_Sat(amount))
-                // add receivers
-                receivers.forEach((receiver, i) => {
-                    tx.addOutputAddress(receiver, util.BTC_to_Sat(amounts[i]))
-                })
-                // add change address
-                tx.addOutputAddress(address, tx.inputAmount - amountInSat - util.BTC_to_Sat(fee));
-
-                tx.sign(privKey_arrayform, undefined, new Uint8Array(32));
-                tx.finalize()
-                return tx.hex
-            } catch (e) {
-                console.error(e)
-            }
+        async function createTx(senderPrivateKey, receivers = [], amounts = [], fee = 0) {
+            console.log(amounts)
+            return new Promise(async (resolve, reject) => {
+                try {
+                    const { tr } = getTaprootAddress(senderPrivateKey)
+                    const { address, script } = tr
+                    const opts = {};
+                    const tx = new taproot.Transaction(opts);
+                    const totalAmount = amounts.reduce((total, amount) => total + amount, 0)
+                    const amountInSat = util.BTC_to_Sat(totalAmount)
+                    // check if sender has enough balance
+                    const senderBalance = await btcOperator.getBalance(address)
+                    const feeRate = await get_fee_rate();
+                    let calculatedFee = 0
+                    const { input_size } = await addUTXOs(tx, tr, [address], util.BTC_to_Sat(totalAmount), feeRate)
+                    calculatedFee += input_size
+                    // add receivers
+                    receivers.forEach((receiver, i) => {
+                        tx.addOutputAddress(receiver, BigInt(util.BTC_to_Sat(amounts[i])))
+                        calculatedFee += _sizePerOutput(receiver)
+                    })
+                    calculatedFee += _sizePerOutput(address)
+                    calculatedFee = parseFloat((calculatedFee * feeRate).toFixed(8)) // convert to sat
+                    fee = fee || calculatedFee; // if fee is not provided, pass calculated fee
+                    // add change address
+                    const changeAmount = senderBalance - (totalAmount + fee)
+                    if (changeAmount < 0)
+                        return reject(`Insufficient balance. Required: ${totalAmount + fee} BTC, Available: ${util.Sat_to_BTC(senderBalance)} BTC`)
+                    tx.addOutputAddress(address, BigInt(util.BTC_to_Sat(changeAmount)));
+                    const privKey = coinjs.wif2privkey(senderPrivateKey).privkey;
+                    const privKey_arrayForm = hex.decode(privKey);
+                    tx.sign(privKey_arrayForm, undefined, new Uint8Array(32));
+                    tx.finalize()
+                    resolve({ txHex: tx.hex, fee })
+                } catch (e) {
+                    reject(e)
+                }
+            })
         }
-        const testTaproot = 'bc1p05whkacavgmh77pgsr7v5k4tyg28x3pqyjanfnjkzzdngqur4yks39w8zk' //remove this later
-        function addUTXOs(tx, tr, senders = [testTaproot], required_amount, fee_rate, rec_args = {}) {
+        function addUTXOs(tx, tr, senders = [], required_amount, fee_rate, rec_args = {}) {
             return new Promise((resolve, reject) => {
-                required_amount = parseFloat(required_amount.toFixed(8));
+                required_amount = parseFloat(required_amount);
                 if (typeof rec_args.n === "undefined") {
                     rec_args.n = 0;
                     rec_args.input_size = 0;
@@ -996,25 +1141,25 @@
                         change_amount: required_amount * -1 //required_amount will be -ve of change_amount
                     });
                 else if (rec_args.n >= senders.length)
-                    return reject("Insufficient Balance");
+                    return reject(`Insufficient Balance.`);
                 let addr = senders[rec_args.n];
                 let size_per_input = _sizePerInput(addr);
                 fetch_api(`unspent?active=${addr}`).then(result => {
                     let utxos = result.unspent_outputs;
                     // console.debug("add-utxo", addr, required_amount, utxos);
                     for (let i = 0; i < utxos.length && required_amount > 0; i++) {
-                        if (!utxos[i].confirmations) //ignore unconfirmed utxo
+                        const { tx_output_n, value, confirmations, tx_hash_big_endian } = utxos[i];
+                        if (!confirmations) //ignore unconfirmed utxo
                             continue;
-                        const { tx_hash, tx_index, value } = utxos[i];
-                        // tx.addinput(utxos[i].tx_hash_big_endian, utxos[i].tx_output_n, script, 0xfffffffd /*sequence*/); //0xfffffffd for Replace-by-fee
                         // changes for taproot
-                        const input = { txid: tx_hash, index: tx_index, script: tr.script, amount: value }
+                        const input = { txid: tx_hash_big_endian, index: tx_output_n, script: tr.script, amount: BigInt(value) }
                         tx.addInput({ ...input, ...tr, witnessUtxo: { script: input.script, amount: input.amount }, });
+
 
                         //update track values
                         rec_args.input_size += size_per_input; // Adjust input size calculation
-                        rec_args.input_amount += util.Sat_to_BTC(utxos[i].value);
-                        required_amount -= util.Sat_to_BTC(utxos[i].value);
+                        rec_args.input_amount += value;
+                        required_amount -= value;
                         if (fee_rate) //automatic fee calculation (dynamic)
                             required_amount += size_per_input * fee_rate;
                     }

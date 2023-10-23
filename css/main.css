@@ -237,7 +237,7 @@ sm-input {
 }
 
 sm-spinner {
-  --size: 1.5rem;
+  --size: 1.3rem;
   --stroke-width: 0.1rem;
 }
 
@@ -617,6 +617,7 @@ ul {
   text-align: center;
   align-items: center;
   justify-items: center;
+  isolation: isolate;
 }
 .multi-state-button > * {
   grid-area: 1/1/2/2;
