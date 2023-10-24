@@ -700,6 +700,20 @@ menu {
   flex-direction: column;
 }
 
+#loading_page {
+  display: grid;
+  gap: 1rem;
+  place-content: center;
+  place-items: center;
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 20;
+  background-color: rgba(var(--foreground-color), 1);
+}
+
 #main_header {
   display: grid;
   grid-template-columns: 1fr auto;
