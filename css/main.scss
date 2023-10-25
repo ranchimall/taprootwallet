@@ -783,11 +783,21 @@ theme-toggle {
   overflow: auto;
 }
 #search {
-  width: min(100%, 52rem);
+  width: min(100%, 56rem);
   margin: 0 auto;
+}
+#search_wrapper {
+  width: min(100%, 46rem);
+  --gap: 0.5rem;
 }
 #search_query_input {
   width: 100%;
+  --border-radius: 5rem;
+  border: solid thin rgba(var(--text-color), 0.3);
+  border-radius: 5rem;
+}
+#check_address_button {
+  border-radius: 5rem;
 }
 
 #address_balance_card {
@@ -887,6 +897,9 @@ theme-toggle {
     margin-right: 0.5rem;
   }
 }
+#tx_details {
+  margin-top: 1rem;
+}
 #tx_status {
   display: flex;
   align-items: center;
@@ -967,13 +980,13 @@ theme-toggle {
 }
 
 .primary-action {
-  padding: 0.8rem;
+  padding: 0.5rem 0.7rem 0.5rem 0.5rem;
   gap: 0.5rem;
   white-space: normal;
   font-size: 0.9rem;
   border-radius: 0.5rem;
   background-color: transparent;
-  border: thin solid rgba(var(--text-color), 0.3);
+  border: thin solid rgba(var(--accent-color-rgb), 0.2);
   text-align: start;
 }
 #flo_id_warning {
@@ -1138,7 +1151,7 @@ theme-toggle {
   }
   #generate_address_popup,
   #convert_to_taproot_popup {
-    --width: 28rem;
+    --width: min(36rem, 100%);
   }
   #send_tx_form {
     &::part(form) {
