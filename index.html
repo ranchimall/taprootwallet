@@ -190,11 +190,11 @@
     <script src="https://unpkg.com/uhtml@3.0.1/es.js"></script>
     <script src="scripts/components.min.js" type="text/javascript"></script>
     <script src="scripts/btcwallet_scripts_lib.js" type="text/javascript"></script>
-    <script src="scripts/btcOperator.js"></script>
-    <script src="scripts/floCrypto.js"></script>
+    <script src="scripts/btcOperator.js" type="text/javascript"></script>
+    <script src="scripts/floCrypto.js" type="text/javascript"></script>
     <script src="scripts/tap_combined.js" type="text/javascript"></script>
-    <script src="scripts/keccak.js"></script>
-    <script src="scripts/floEthereum.js"></script>
+    <script src="scripts/keccak.js" type="text/javascript"></script>
+    <script src="scripts/floEthereum.js" type="text/javascript"></script>
     <script id="ui_utils">
         const uiGlobals = {}
         const { html, svg, render: renderElem } = uhtml;
@@ -1196,7 +1196,7 @@
                                 <output id="address_balance" class="amount-shown"></output>
                             </div>
                             <div class="flex align-center space-between sticky top-0" style="background-color: rgba(var(--foreground-color), 1); z-index: 2">
-                                <h5>Transactions</h5>
+                                <h4>Transactions</h4>
                                 <sm-chips id="filter_selector" onchange=${handleFiltering} role="listbox">
                                     <sm-chip value="all" selected="" role="option" tabindex="0">All</sm-chip>
                                     <sm-chip value="sent" role="option" tabindex="0">Sent</sm-chip>
@@ -1680,9 +1680,6 @@
         }
     </script>
     <script type="text/javascript">
-        //This library uses API provided by chain.so (https://chain.so/)
-        const URL = "https://blockchain.info/";
-
         const DUST_AMT = 546,
             MIN_FEE_UPDATE = 219;
 
@@ -1699,35 +1696,6 @@
             SEGWIT_OUTPUT_SIZE = 23,
             BECH32M_OUTPUT_SIZE = 35; // Check this later
 
-        function get_fee_rate() {
-            return new Promise((resolve, reject) => {
-                fetch('https://api.blockchain.info/mempool/fees').then(response => {
-                    if (response.ok)
-                        response.json()
-                            .then(result => resolve(btcOperator.util.Sat_to_BTC(result.regular)))
-                            .catch(error => reject(error));
-                    else
-                        reject(response);
-                }).catch(error => reject(error))
-            })
-        }
-
-        const fetch_api = function (api, json_res = true) {
-            return new Promise((resolve, reject) => {
-                console.debug(URL + api);
-                fetch(URL + api).then(response => {
-                    if (response.ok) {
-                        (json_res ? response.json() : response.text())
-                            .then(result => resolve(result))
-                            .catch(error => reject(error))
-                    } else {
-                        response.json()
-                            .then(result => reject(result))
-                            .catch(error => reject(error))
-                    }
-                }).catch(error => reject(error))
-            })
-        };
         function getTaprootAddress(wif) {
             if (!wif)
                 wif = coinjs.newKeys().wif
@@ -1783,8 +1751,8 @@
                     const amountInSat = btcOperator.util.BTC_to_Sat(totalAmount)
                     // check if sender has enough balance
                     const senderBalance = await btcOperator.getBalance(address)
-                    const feeRate = await get_fee_rate();
-                    let calculatedFee = 0
+                    const feeRate = await btcOperator.getFeeRate();
+                    let calculatedFee = 0;
                     const { input_size } = await addUTXOs(tx, tr, [address], btcOperator.util.BTC_to_Sat(totalAmount), feeRate)
                     calculatedFee += input_size
                     // add receivers
@@ -1828,7 +1796,7 @@
                     return reject(`Insufficient Balance.`);
                 let addr = senders[rec_args.n];
                 let size_per_input = _sizePerInput(addr);
-                fetch_api(`unspent?active=${addr}`).then(result => {
+                btcOperator.fetch(`unspent?active=${addr}`).then(result => {
                     let utxos = result.unspent_outputs;
                     // console.debug("add-utxo", addr, required_amount, utxos);
                     for (let i = 0; i < utxos.length && required_amount > 0; i++) {
