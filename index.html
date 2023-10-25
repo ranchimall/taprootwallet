@@ -82,7 +82,7 @@
                         </span>
                     </a>
                 </li>
-                <li class="hidden">
+                <li>
                     <a href="#/convert" class="nav-item interactive">
                         <svg class="icon" xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 0 24 24"
                             width="24px" fill="#000000">
@@ -1351,10 +1351,179 @@
             getRef('send_tx_button').disabled = true
         }
         router.addRoute('convert', (state) => {
+            const convertingFrom = state.params.from || 'flo';
+            let privateKeyConversionDescription = '';
+            let addressConversionDescription = null;
+            let addressForConversion = ''
+            switch (convertingFrom) {
+                case 'flo':
+                    privateKeyConversionDescription = 'Convert FLO private key to corresponding BTC | ETH address & private key';
+                    addressConversionDescription = 'Convert FLO address to BTC address';
+                    addressForConversion = html`<sm-input id="address_for_conversion" placeholder="FLO Address" data-flo-address animate required></sm-input>`
+                    break;
+                case 'btc':
+                    privateKeyConversionDescription = 'Convert BTC private key to corresponding FLO | ETH address & private key';
+                    addressConversionDescription = 'Convert BTC address to FLO address';
+                    addressForConversion = html`<sm-input id="address_for_conversion" placeholder="BTC Address" data-btc-address animate required></sm-input>`
+                    break;
+                case 'eth':
+                    privateKeyConversionDescription = 'Convert ETH private key to corresponding FLO | BTC address & private key';
+                    break;
+            }
             renderElem(getRef('page_container'), html`
-
+                <div id="convert" class="flex flex-direction-column gap-1-5" data-sm-containment>
+                    <sm-chips id="conversion_view_selector" onchange="handleConversionRouteChange(event)">
+                        <sm-chip value="flo" ?selected=${convertingFrom === 'flo'}>FLO</sm-chip>
+                        <sm-chip value="btc" ?selected=${convertingFrom === 'btc'}>BTC</sm-chip>
+                        <sm-chip value="eth" ?selected=${convertingFrom === 'eth'}>ETH</sm-chip>
+                    </sm-chips>
+                    <div id="key_conversion_content" class="grid gap-1-5">
+                        <div class="grid gap-1-5">
+                            <div class="grid gap-0-3">
+                                <h3>Private key converter</h3>
+                                <p>${privateKeyConversionDescription}</p>
+                            </div>
+                            <sm-form oninvalid=${() => renderElem(getRef('private_key_conversion_result'), html``)}>
+                                <div class="input-action-wrapper">
+                                    <sm-input type="password" id="private_key_for_conversion" class="password-field" placeholder=${`${convertingFrom.toUpperCase()} private key`} data-private-key required animate>
+                                        <label slot="right" class="interact">
+                                            <input type="checkbox" class="hidden" autocomplete="off" readonly onchange="togglePrivateKeyVisibility(this)">
+                                            <svg class="icon invisible" xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 0 24 24" width="24px" fill="#000000"> <title>Hide password</title> <path d="M0 0h24v24H0zm0 0h24v24H0zm0 0h24v24H0zm0 0h24v24H0z" fill="none" /> <path d="M12 7c2.76 0 5 2.24 5 5 0 .65-.13 1.26-.36 1.83l2.92 2.92c1.51-1.26 2.7-2.89 3.43-4.75-1.73-4.39-6-7.5-11-7.5-1.4 0-2.74.25-3.98.7l2.16 2.16C10.74 7.13 11.35 7 12 7zM2 4.27l2.28 2.28.46.46C3.08 8.3 1.78 10.02 1 12c1.73 4.39 6 7.5 11 7.5 1.55 0 3.03-.3 4.38-.84l.42.42L19.73 22 21 20.73 3.27 3 2 4.27zM7.53 9.8l1.55 1.55c-.05.21-.08.43-.08.65 0 1.66 1.34 3 3 3 .22 0 .44-.03.65-.08l1.55 1.55c-.67.33-1.41.53-2.2.53-2.76 0-5-2.24-5-5 0-.79.2-1.53.53-2.2zm4.31-.78l3.15 3.15.02-.16c0-1.66-1.34-3-3-3l-.17.01z" /> </svg>
+                                            <svg class="icon visible" xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 0 24 24" width="24px" fill="#000000"> <title>Show password</title> <path d="M0 0h24v24H0z" fill="none" /> <path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z" /> </svg>
+                                        </label>
+                                    </sm-input>
+                                    <button type="submit" onclick=${() => convertPrivateKey(convertingFrom)} class="button button--primary cta" disabled>Convert</button>
+                                </div>
+                            </sm-form>
+                            <ul id="private_key_conversion_result" class="grid gap-0-5"></ul>
+                        </div>
+                        ${addressConversionDescription ? html`
+                            <div class="grid gap-1-5">
+                                <div class="grid gap-0-3">
+                                    <h3>Address converter</h3>
+                                    <p class="panel-footer">${addressConversionDescription}</p>
+                                </div>  
+                                <sm-form class="flex" oninvalid=${() => renderElem(getRef('address_conversion_result'), html``)}>
+                                    <div class="input-action-wrapper">
+                                        ${addressForConversion}
+                                        <button class="button--primary justify-self-center cta" onclick=${() => convertAddress(convertingFrom)} type="submit" disabled>
+                                            Convert
+                                        </button>
+                                    </div>
+                                </sm-form>
+                                <div id="address_conversion_result" class="converted-card"></div>
+                            </div>
+                        `: ''}    
+                    </div>
+                </div>
             `)
         })
+        function handleConversionRouteChange(e) {
+            location.hash = `#/convert?from=${e.target.value}`
+        }
+        function convertPrivateKey(convertFrom) {
+            let keyToConvert = getRef('private_key_for_conversion').value.trim();
+            if (/^[0-9a-fA-F]{64}$/.test(keyToConvert)) {
+                keyToConvert = coinjs.privkey2wif(keyToConvert)
+            }
+            let convertedToFloPrivateKey
+            let convertedToFloAddress
+            let convertedToBtcPrivateKey
+            let convertedToBtcAddress
+            let convertedToEthPrivateKey
+            let convertedToEthAddress
+            try {
+                switch (convertFrom) {
+                    case 'flo':
+                        convertedToBtcPrivateKey = btcOperator.convert.wif(keyToConvert)
+                        convertedToBtcAddress = getTaprootAddress(convertedToBtcPrivateKey).tr.address
+                        convertedToEthPrivateKey = coinjs.wif2privkey(keyToConvert).privkey;
+                        convertedToEthAddress = floEthereum.ethAddressFromPrivateKey(convertedToEthPrivateKey)
+                        break;
+                    case 'btc':
+                        convertedToFloPrivateKey = btcOperator.convert.wif(keyToConvert, bitjs.priv)
+                        convertedToFloAddress = floCrypto.getFloID(convertedToFloPrivateKey);
+                        convertedToEthPrivateKey = coinjs.wif2privkey(keyToConvert).privkey;
+                        convertedToEthAddress = floEthereum.ethAddressFromPrivateKey(convertedToEthPrivateKey)
+                        break;
+                    case 'eth':
+                        convertedToBtcPrivateKey = btcOperator.convert.wif(keyToConvert)
+                        convertedToBtcAddress = getTaprootAddress(convertedToBtcPrivateKey).tr.address
+                        convertedToFloPrivateKey = keyToConvert
+                        convertedToFloAddress = floCrypto.getFloID(convertedToFloPrivateKey);
+                        break;
+                }
+                renderElem(getRef('private_key_conversion_result'), html`
+                    ${convertedToFloPrivateKey ? html`
+                        <li class="grid gap-1 converted-card">
+                            <div class="grid">
+                                <span class="label">FLO Address</span>
+                                <sm-copy value="${convertedToFloAddress}"></sm-copy>
+                            </div>
+                            <div class="grid">
+                                <span class="label">FLO Private Key</span>
+                                <sm-copy value="${convertedToFloPrivateKey}"></sm-copy>
+                            </div>
+                        </li>
+                    `: ''}
+                    ${convertedToBtcPrivateKey ? html`
+                        <li class="grid gap-1 converted-card">
+                            <div class="grid">
+                                <span class="label">BTC Address (Taproot)</span>
+                                <sm-copy value="${convertedToBtcAddress}"></sm-copy>
+                            </div>
+                            <div class="grid">
+                                <span class="label">BTC Private Key</span>
+                                <sm-copy value="${convertedToBtcPrivateKey}"></sm-copy>
+                            </div>
+                        </li>
+                    `: ''}
+                    ${convertedToEthPrivateKey ? html`
+                        <li class="grid gap-1 converted-card">
+                            <div class="grid">
+                                <span class="label">ETH Address</span>
+                                <sm-copy value="${convertedToEthAddress}"></sm-copy>
+                            </div>
+                            <div class="grid">
+                                <span class="label">ETH Private Key</span>
+                                <sm-copy value="${convertedToEthPrivateKey}"></sm-copy>
+                            </div>
+                        </li>
+                    `: ''}
+                `)
+            } catch (err) {
+                notify('Invalid private key', 'error')
+                renderElem(getRef('private_key_conversion_result'), html``)
+            }
+        }
+        function convertAddress(convertFrom) {
+            const addressToConvert = getRef('address_for_conversion').value.trim();
+            let convertedAddress
+            let convertedTo
+            try {
+                switch (convertFrom) {
+                    case 'flo':
+                        convertedAddress = btcOperator.convert.legacy2bech(addressToConvert);
+                        convertedTo = 'BTC'
+                        break;
+                    case 'btc':
+                        convertedAddress = floCrypto.getFloID(addressToConvert);
+                        convertedTo = 'FLO'
+                        break;
+                }
+                if (convertedAddress === addressToConvert) {
+                    notify('Address is already converted', 'error')
+                    return;
+                }
+                renderElem(getRef('address_conversion_result'), html`
+                    <span class="label">${convertedTo} Address</span>
+                    <sm-copy value="${convertedAddress}"></sm-copy>
+                `)
+            } catch (err) {
+                notify('Invalid address', 'error')
+                renderElem(getRef('address_conversion_result'), html``)
+            }
+        }
 
         router.addRoute('404', () => {
             renderElem(getRef('page_container'), html`
