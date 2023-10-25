@@ -174,6 +174,22 @@
             </div>
         </section>
     </sm-popup>
+    <sm-popup id="increase_fee_popup">
+        <header slot="header" class="popup__header">
+            <div class="flex align-center">
+                <button class="popup__header__close" onclick="closePopup()">
+                    <svg class="icon" xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 0 24 24" width="24px"
+                        fill="#000000">
+                        <path d="M0 0h24v24H0V0z" fill="none" />
+                        <path
+                            d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12 19 6.41z" />
+                    </svg>
+                </button>
+                <h3>Increase fee</h3>
+            </div>
+        </header>
+        <div id="increase_fee_popup_content"></div>
+    </sm-popup>
     <sm-popup id="transaction_result_popup">
         <header slot="header" class="popup__header">
             <button class="popup__header__close justify-self-start" onclick="closePopup()">
@@ -928,7 +944,8 @@
                     icon = svg`<svg class="icon" xmlns="http://www.w3.org/2000/svg" enable-background="new 0 0 24 24" height="24px" viewBox="0 0 24 24" width="24px" fill="#000000"><g><rect fill="none" height="24" width="24"/></g><g><path d="M6,2l0.01,6L10,12l-3.99,4.01L6,22h12v-6l-4-4l4-3.99V2H6z M16,16.5V20H8v-3.5l4-4L16,16.5z"/></g></svg>`;
                 }
                 const queriedAddress = router.state.params?.query || getRef('search_query_input').value.trim()
-                const isSender = type === 'out' || type === 'self'
+                const isSender = type === 'out' || type === 'self';
+                const isTaprootAddress = btcOperator.validateAddress(queriedAddress) === 'bech32m'
                 const className = `transaction grid ${type} ${block === null ? 'unconfirmed-tx' : ''}`
                 return html.node/*html*/`
                     <li class="${className}" data-txid="${txid}" data-transacting-addresses=${transactingAddresses.slice(2)}>
@@ -947,9 +964,9 @@
                                     <svg class="icon" xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 0 24 24" width="24px" fill="#000000"><path d="M0 0h24v24H0V0z" fill="none"/><path d="M11 7h2v2h-2zm0 4h2v6h-2zm1-9C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z"/></svg>
                                     View details
                                 </a>
-                                ${isSender && !block ? html`
+                                ${isSender && isTaprootAddress && !block ? html`
                                     <div class="multi-state-button">
-                                        <button class="button button--small gap-0-3" onclick=${initFeeChange} title="Resend transaction with greater fees to reduce confirmation time">
+                                        <button class="button button--small gap-0-3 button--colored" onclick=${initFeeChange} title="Resend transaction with greater fees to reduce confirmation time">
                                             <svg class="icon" xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 0 24 24" width="24px" fill="#000000"><path d="M0 0h24v24H0V0z" fill="none"/><path d="M4 12l1.41 1.41L11 7.83V20h2V7.83l5.58 5.59L20 12l-8-8-8 8z"/></svg>
                                             Increase fee
                                         </button>
@@ -1082,13 +1099,14 @@
                         <div id="in_out_wrapper" class="flex flex-wrap">
                             <div>
                                 <div class="flex align-center space-between margin-bottom-1" style="padding: 0.5rem 1rem;">
-                                    <b>Sender addresses</b>
-                                    <b>Amount</b>
+                                    <b>Senders</b>
                                 </div>
                                 <ul>
                                     ${inputs.map(input => html`
                                         <li class="in-out-card">
-                                            <a href="${`#/search?query=${input.address}`}" class="input-address wrap-around">${input.address}</a>
+                                            <sm-copy value=${input.address}>
+                                                <a href="${`#/search?query=${input.address}`}" class="input-address wrap-around">${input.address}</a>
+                                            </sm-copy>
                                             <div class="input-value amount-shown" data-btc-amount="${input.value}">${getConvertedAmount(input.value, true)}</div>
                                         </li>
                                     `)}
@@ -1096,13 +1114,14 @@
                             </div>
                             <div>
                                 <div class="flex align-center space-between margin-bottom-1" style="padding: 0.5rem 1rem;">
-                                    <b>Receiver addresses</b>
-                                    <b>Amount</b>
+                                    <b>Receivers</b>
                                 </div>
                                 <ul>
                                     ${outputs.map(output => html`
                                         <li class="in-out-card">
-                                            <a href="${`#/search?query=${output.address}`}" class="output-address wrap-around">${output.address}</a>
+                                            <sm-copy value=${output.address}>
+                                                <a href="${`#/search?query=${output.address}`}" class="output-address wrap-around">${output.address}</a>
+                                            </sm-copy>
                                             <div class="output-value amount-shown" data-btc-amount="${output.value}">${getConvertedAmount(output.value, true)}</div>
                                         </li>
                                     `)}
@@ -1216,9 +1235,6 @@
                     getRef('search_query_input').value = query;
                 render.queryResult(query)
             }
-            setTimeout(() => {
-                getRef('search_query_input').focusIn()
-            }, 200);
         }
         const [suggestedFee, setSuggestedFee] = $signal(0);
         const [suggestedFeeStatus, setSuggestedFeeStatus] = $signal(['idle'])
@@ -1556,19 +1572,9 @@
             changingFeeOf = txid
             try {
                 const { inputs, outputs, fee: previousFee } = await btcOperator.getTx(txid)
-                const isMultisig = inputs.some(input => ["multisig", "multisigBech32"].includes(btcOperator.validateAddress(input.address)))
                 let senders = []
                 let requiredSignatures = 0
-                if (isMultisig) {
-                    const details = btcOperator.deserializeTx(await btcOperator.getTx.hex(txid))
-                    senders = btcOperator.extractLastHexStrings(details.witness).flatMap((hex) => {
-                        const { address, required: requiredSignatures, pubKeys } = btcOperator.decodeRedeemScript(hex) || {}
-                        console.log(btcOperator.decodeRedeemScript(hex))
-                        return pubKeys.map(pubKey => btcOperator.bech32Address(pubKey))
-                    })
-                } else {
-                    senders = inputs.map(input => input.address)
-                }
+                senders = inputs.map(input => input.address)
                 const receivers = outputs.map(output => output.address)
                 const uniqueReceivers = outputs.reduce((acc, { address, value }) => {
                     if (acc[address]) {
@@ -1578,13 +1584,6 @@
                     }
                     return acc
                 }, {})
-                const amounts = outputs.map(output => 0.00000005)
-                let recommendedFee = null
-                if (!isMultisig) {
-                    const { fee } = await btcOperator.createTx(senders, receivers, amounts)
-                    if (fee > previousFee)
-                        recommendedFee = fee
-                }
                 renderElem(getRef('increase_fee_popup_content'), html`
                     <sm-form style="--gap: 2rem">
                         <div class="grid gap-0-5">
@@ -1623,14 +1622,14 @@
                         </div>
                         <div class="grid gap-0-5">
                             <p>
-                                Previous fee: <b>${getConvertedAmount(previousFee, true)}</b> ${recommendedFee ? html`| Recommended fee: <b>${getConvertedAmount(recommendedFee, true)}</b>` : ''}
+                                Previous fee: <b>${getConvertedAmount(previousFee, true)}</b>
                             </p>
                             <sm-input id="new_fee" placeholder="New fee" type="number" min=${getConvertedAmount(previousFee)} step="0.00000001" error-text=${`New fee should be greater than ${getConvertedAmount(previousFee, true)}`} animate required>
                                 <div class="currency-symbol flex" slot="icon"> </div>
                             </sm-input>
                         </div>
                         <div class="multi-state-button">
-                            <button id="increase_fee" class="button button--primary" onclick=${() => increaseFee(isMultisig)} type="submit">Increase fee</button>
+                            <button id="increase_fee" class="button button--primary" onclick=${increaseFee} type="submit">Increase fee</button>
                         </div>
                     </sm-form>
                 `)
@@ -1642,7 +1641,7 @@
                 buttonLoader(button, false)
             }
         }
-        async function increaseFee(isMultisig = false) {
+        async function increaseFee() {
             buttonLoader(document.getElementById('increase_fee'), true)
             const newFee = parseFloat((parseFloat(document.getElementById('new_fee').value.trim()) / (globalExchangeRate[selectedCurrency] || 1)).toFixed(8))
             const privateKeys = []
@@ -1657,12 +1656,7 @@
             })
             console.log(changingFeeOf, newFee, privateKeys)
             try {
-                let signedTxHex
-                if (isMultisig) {
-                    signedTxHex = await btcOperator.editFee_corewallet(changingFeeOf, newFee, privateKeys)
-                } else {
-                    signedTxHex = await btcOperator.editFee(changingFeeOf, newFee, privateKeys)
-                }
+                let signedTxHex = await taprootEditFee(changingFeeOf, newFee, privateKeys)
                 btcOperator.broadcastTx(signedTxHex).then(txId => {
                     console.log(txId)
                     closePopup()
@@ -1821,6 +1815,73 @@
                         .catch(error => reject(error))
                 }).catch(error => reject(error))
             });
+        }
+
+        const taprootEditFee = function (tx_hex, new_fee, private_keys, change_only = true) {
+            return new Promise((resolve, reject) => {
+                if (!Array.isArray(private_keys))
+                    private_keys = [private_keys];
+                btcOperator.tx_fetch_for_editing(tx_hex).then(tx => {
+                    btcOperator.parseTransaction(tx).then(tx_parsed => {
+                        if (tx_parsed.fee >= new_fee)
+                            return reject("Fees can only be increased");
+
+                        //editable addresses in output values (for fee increase)
+                        var edit_output_address = new Set();
+                        if (change_only === true) //allow only change values (ie, sender address) to be edited to inc fee
+                            tx_parsed.inputs.forEach(inp => edit_output_address.add(inp.address));
+                        else if (change_only === false) //allow all output values to be edited
+                            tx_parsed.outputs.forEach(out => edit_output_address.add(out.address));
+                        else if (typeof change_only == 'string') // allow only given receiver id output to be edited
+                            edit_output_address.add(change_only);
+                        else if (Array.isArray(change_only))    //allow only given set of receiver id outputs to be edited
+                            change_only.forEach(id => edit_output_address.add(id));
+
+                        //edit output values to increase fee
+                        let inc_fee = btcOperator.util.BTC_to_Sat(new_fee - tx_parsed.fee);
+                        if (inc_fee < MIN_FEE_UPDATE)
+                            return reject(`Insufficient additional fee. Minimum increment: ${MIN_FEE_UPDATE}`);
+                        for (let i = tx.outs.length - 1; i >= 0 && inc_fee > 0; i--)   //reduce in reverse order
+                            if (edit_output_address.has(tx_parsed.outputs[i].address)) {
+                                let current_value = tx.outs[i].value;
+                                if (current_value instanceof BigInteger)    //convert BigInteger class to inv value
+                                    current_value = current_value.intValue();
+                                //edit the value as required
+                                if (current_value > inc_fee) {
+                                    tx.outs[i].value = current_value - inc_fee;
+                                    inc_fee = 0;
+                                } else {
+                                    inc_fee -= current_value;
+                                    tx.outs[i].value = 0;
+                                }
+                            }
+                        if (inc_fee > 0) {
+                            let max_possible_fee = btcOperator.util.BTC_to_Sat(new_fee) - inc_fee; //in satoshi
+                            return reject(`Insufficient output values to increase fee. Maximum fee possible: ${btcOperator.util.Sat_to_BTC(max_possible_fee)}`);
+                        }
+                        tx.outs = tx.outs.filter(o => o.value >= DUST_AMT); //remove all output with value less than DUST amount
+
+                        //remove existing signatures and reset the scripts
+                        let wif_keys = [];
+                        for (let i in tx.ins) {
+                            var addr = tx_parsed.inputs[i].address;
+                            //find the correct key for addr
+                            var privKey = private_keys.find(pk => btcOperator.verifyKey(addr, pk));
+                            if (!privKey)
+                                return reject(`Private key missing for ${addr}`);
+                        }
+                        tx.witness = false; //remove all witness signatures
+                        console.debug("Unsigned:", tx.serialize());
+                        //re-sign the transaction
+                        new Set(wif_keys).forEach(key => {
+                            const privKey = coinjs.wif2privkey(key).privkey;
+                            const privKey_arrayForm = hex.decode(privKey);
+                            tx.sign(privKey_arrayForm, undefined, new Uint8Array(32));
+                        }); //Sign the tx using private key WIF
+                        resolve(tx.serialize());
+                    }).catch(error => reject(error))
+                }).catch(error => reject(error))
+            })
         }
     </script>
 </body>

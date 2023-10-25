@@ -1010,8 +1010,7 @@ theme-toggle {
 
 .in-out-card {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 0.5rem;
+  gap: 1rem;
   padding: 1rem;
   border-radius: 0.5rem;
   background-color: rgba(var(--text-color), 0.03);
@@ -1019,8 +1018,15 @@ theme-toggle {
 .in-out-card:not(:last-of-type) {
   margin-bottom: 0.5rem;
 }
-.in-out-card > :first-child {
-  margin-right: 1rem;
+.in-out-card :last-child {
+  font-weight: 500;
+}
+
+.increase-fee-sender,
+.increase-fee-receiver {
+  padding: 1rem;
+  border-radius: 0.5rem;
+  border: solid thin rgba(var(--text-color), 0.3);
 }
 
 .primary-action {
@@ -1211,6 +1217,9 @@ theme-toggle {
     padding: 1.5rem 1rem;
     border-radius: 0.5rem;
     border: solid thin rgba(var(--text-color), 0.3);
+  }
+  #increase_fee_popup {
+    --width: 30rem;
   }
   #generate_address_popup,
 #convert_to_taproot_popup {
