@@ -389,18 +389,6 @@
                 notify('Browser is not fully compatible, some features may not work. for best experience please use Chrome, Edge, Firefox or Safari', 'error')
             }
             document.body.classList.remove('hidden')
-            document.querySelectorAll('sm-input[data-btc-address]').forEach(input => input.customValidation = (value) => {
-                return {
-                    isValid: btcOperator.validateAddress(value),
-                    errorText: `Invalid address. It's a long string of random characters usually starting with '1','3' or 'bc1'.`
-                }
-            })
-            document.querySelectorAll('sm-input[data-private-key]').forEach(input => input.customValidation = (value) => {
-                return {
-                    isValid: floCrypto.getPubKeyHex(value),
-                    errorText: `Invalid private key. It's a long string of random characters usually starting with 'L' or 'R'.`
-                }
-            })
             document.addEventListener('keyup', (e) => {
                 if (e.key === 'Escape') {
                     closePopup()
@@ -437,6 +425,7 @@
                             easing: 'ease'
                         }).onfinish = () => {
                             getRef('loading_page').remove()
+                            document.body.classList.add('loaded')
                         }
                     }, 500);
                     document.querySelectorAll('.currency-symbol').forEach(el => el.innerHTML = currencyIcons[selectedCurrency])
@@ -819,7 +808,17 @@
                         if (!value) return { isValid: false, errorText: 'Please enter a BTC address' }
                         return {
                             isValid: btcOperator.validateAddress(value),
-                            errorText: `Invalid address.<br> It usually starts with "1", "3" or "bc1"`
+                            errorText: `Invalid address.<br> It usually starts with "1", "3" or "bc1."`
+                        }
+                    }
+                },
+                {
+                    selector: '[data-taproot-address]',
+                    customValidation: (value) => {
+                        if (!value) return { isValid: false, errorText: 'Please enter a Taproot address' }
+                        return {
+                            isValid: btcOperator.validateAddress(value) === 'bech32m',
+                            errorText: `Invalid Taproot address.<br> It starts with "bc1p."`
                         }
                     }
                 },
@@ -829,7 +828,7 @@
                         if (!value) return { isValid: false, errorText: 'Please enter a private key' }
                         return {
                             isValid: floCrypto.getPubKeyHex(value),
-                            errorText: `Invalid private key.<br> It usually starts with "L" or "R"`
+                            errorText: `Invalid private key.<br> It usually starts with "L".`
                         }
                     }
                 }
@@ -1180,6 +1179,7 @@
         })
         router.addRoute('', (state) => {
             history.replaceState({}, '', '#/search')
+            renderSearch(state)
         })
         router.addRoute('search', renderSearch)
         function renderSearch(state) {
@@ -1243,7 +1243,9 @@
         const [suggestedFee, setSuggestedFee] = $signal(0);
         const [suggestedFeeStatus, setSuggestedFeeStatus] = $signal(['idle'])
         const [feeType, setFeeType] = $signal('suggested')
+        const [atTaprootStep, setAtTaprootStep] = $signal(1);
         router.addRoute('send', (state) => {
+            const [isScriptMode, setIsScriptMode] = $signal(false);
             $effect(() => {
                 let feeSection = ''
                 if (feeType() === 'suggested') {
@@ -1265,20 +1267,89 @@
                         </sm-input>
                     `
                 }
-                renderElem(getRef('page_container'), html`
-                    <div class="flex flex-direction-column gap-1-5">
-                        <h3>
-                            Perform Transaction
-                        </h3>
+                let form = '';
+                if (isScriptMode()) {
+                    switch (atTaprootStep()) {
+                        case 1:
+                            form = html`
+                                <sm-form id="sender_receiver_form">
+                                    <fieldset class="flex flex-direction-column gap-1">
+                                        <div class="flex flex-direction-column gap-0-5">
+                                            <div class="flex space-between align-center">
+                                                <h4>Sender</h4>
+                                                <button id="check_balance_button" class="button button--small button--colored" disabled onclick="checkBalance()">
+                                                    Check balance
+                                                </button>
+                                            </div>
+                                            <sm-input id="taproot_sender_input" placeholder="Sender's Taproot address" oninput=${handleSenderInput} data-taproot-address animate required> </sm-input>
+                                            <div id="sender_balance_container" class="flex align-center gap-0-3 hidden"></div>
+                                        </div>
+                                        <div class="flex flex-direction-column gap-0-5">
+                                            <h4>Receiver</h4>
+                                            <ul id="receivers_container" class="grid gap-1">
+                                                <li class="grid gap-0-5 receiver-wrapper">
+                                                    <sm-input class="receiver-address" placeholder="Receiver's address" data-btc-address animate required></sm-input>
+                                                    <sm-input class="receiver-amount amount-shown" placeholder="Amount" type="number" step="0.00000001" min="0.0000001" error-text="Amount should be grater than 0.0000001 BTC" animate required>
+                                                        <div class="currency-symbol flex" slot="icon">
+                                                            <svg class="icon" xmlns="http://www.w3.org/2000/svg" enable-background="new 0 0 24 24" height="24px" viewBox="0 0 24 24" width="24px" fill="#000000"> <g> <rect fill="none" height="24" width="24"></rect> </g> <g> <path d="M17.06,11.57C17.65,10.88,18,9.98,18,9c0-1.86-1.27-3.43-3-3.87L15,3h-2v2h-2V3H9v2H6v2h2v10H6v2h3v2h2v-2h2v2h2v-2 c2.21,0,4-1.79,4-4C19,13.55,18.22,12.27,17.06,11.57z M10,7h4c1.1,0,2,0.9,2,2s-0.9,2-2,2h-4V7z M15,17h-5v-4h5c1.1,0,2,0.9,2,2 S16.1,17,15,17z"> </path> </g> </svg>
+                                                        </div>
+                                                    </sm-input>
+                                                </li>
+                                            </ul>
+                                            <button class="button button--colored button--small margin-right-auto" onclick="addReceiver()">
+                                                Add receiver
+                                            </button>
+                                        </div>
+                                    </fieldset>
+                                    <fieldset class="flex flex-direction-column gap-1">
+                                        <sm-input id="script_input" placeholder="Script (hex)" pattern="^[0-9A-Fa-f]+$" error-text="Only hexadecimal values are allowed" animate required></sm-input>
+                                        <sm-input id="control_block_input" placeholder="Control block (hex)" pattern="^[0-9A-Fa-f]+$" error-text="Only hexadecimal values are allowed" animate required></sm-input>
+                                        <sm-input id="solutions_input" placeholder="No. of solutions" type="number" min="1" animate required></sm-input>
+                                        <sm-checkbox id="sign_transaction_checkbox">
+                                            <p style="margin-left: 0.5rem;">I want to sign the transaction</p>
+                                        </sm-checkbox>
+                                        <button class="button button--primary" type="submit" disabled onclick=${() => proceedTo(2)}>Proceed</button>
+                                    </fieldset>
+                                </sm-form>
+                            `;
+                            break;
+                        case 2:
+                            form = html`
+                                <sm-form id="script_details_form" style="max-width: 36rem">
+                                    <div class="flex flex-direction-column gap-1">
+                                        ${[...Array(taprootScriptTxDetails.solutions).keys()].map(index => html`
+                                            <sm-input class="solution-input" placeholder=${`Solution ${index + 1} (hex)`} pattern="^[0-9A-Fa-f]+$" error-text="Only hexadecimal values are allowed" animate required></sm-input>
+                                        `)} 
+                                    </div>
+                                    ${taprootScriptTxDetails.signTransaction ? html`
+                                        <sm-input id="signer_input" placeholder="Signer's private key" data-private-key class="password-field" type="password" animate required>
+                                            <svg class="icon" slot="icon" xmlns="http://www.w3.org/2000/svg" enable-background="new 0 0 24 24" height="24px" viewBox="0 0 24 24" width="24px" fill="#000000"> <g> <rect fill="none" height="24" width="24"></rect> </g> <g> <path d="M21,10h-8.35C11.83,7.67,9.61,6,7,6c-3.31,0-6,2.69-6,6s2.69,6,6,6c2.61,0,4.83-1.67,5.65-4H13l2,2l2-2l2,2l4-4.04L21,10z M7,15c-1.65,0-3-1.35-3-3c0-1.65,1.35-3,3-3s3,1.35,3,3C10,13.65,8.65,15,7,15z"> </path> </g> </svg>
+                                            <label slot="right" class="interact">
+                                                <input type="checkbox" class="hidden" autocomplete="off" readonly="" onchange="togglePrivateKeyVisibility(this)">
+                                                <svg class="icon invisible" xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 0 24 24" width="24px" fill="#000000"> <title>Hide password</title> <path d="M0 0h24v24H0zm0 0h24v24H0zm0 0h24v24H0zm0 0h24v24H0z" fill="none"></path> <path d="M12 7c2.76 0 5 2.24 5 5 0 .65-.13 1.26-.36 1.83l2.92 2.92c1.51-1.26 2.7-2.89 3.43-4.75-1.73-4.39-6-7.5-11-7.5-1.4 0-2.74.25-3.98.7l2.16 2.16C10.74 7.13 11.35 7 12 7zM2 4.27l2.28 2.28.46.46C3.08 8.3 1.78 10.02 1 12c1.73 4.39 6 7.5 11 7.5 1.55 0 3.03-.3 4.38-.84l.42.42L19.73 22 21 20.73 3.27 3 2 4.27zM7.53 9.8l1.55 1.55c-.05.21-.08.43-.08.65 0 1.66 1.34 3 3 3 .22 0 .44-.03.65-.08l1.55 1.55c-.67.33-1.41.53-2.2.53-2.76 0-5-2.24-5-5 0-.79.2-1.53.53-2.2zm4.31-.78l3.15 3.15.02-.16c0-1.66-1.34-3-3-3l-.17.01z"> </path> </svg>
+                                                <svg class="icon visible" xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 0 24 24" width="24px" fill="#000000"> <title>Show password</title> <path d="M0 0h24v24H0z" fill="none"></path> <path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"> </path> </svg>
+                                            </label>
+                                        </sm-input>
+                                    `: ''}
+                                    <div class="flex gap-0-5">
+                                        <button class="button button--colored" onclick="proceedTo(1)">Back</button>
+                                        <button id="taproot_script_path_send_button" class="button button--primary flex-1" type="submit" disabled onclick=${sendScriptPathTx}>Send</button>
+                                    </div>
+                                </sm-form>
+                            `
+                            break;
+                    }
+                } else {
+                    form = html`
                         <sm-form id="send_tx_form" onvalid=${calculateSuggestedFee} oninvalid=${handleInvalidForm} ?skip-submit=${feeType() === 'suggested'}>
-                            <div class="flex flex-direction-column gap-0-5">
+                            <fieldset class="flex flex-direction-column gap-0-5">
                                 <div class="flex space-between align-center">
                                     <h4>Sender</h4>
                                     <button id="check_balance_button" class="button button--small button--colored" disabled onclick="checkBalance()">
                                         Check balance
                                     </button>
                                 </div>
-                                <sm-input id="private_key_input" placeholder="Sender's private key" data-private-key class="password-field" type="password" oninput=${handlePrivateKeyInput} animate required>
+                                <sm-input id="private_key_input" placeholder="Sender's private key" data-private-key class="password-field" type="password" oninput=${handleSenderInput} animate required>
                                     <svg class="icon" slot="icon" xmlns="http://www.w3.org/2000/svg" enable-background="new 0 0 24 24" height="24px" viewBox="0 0 24 24" width="24px" fill="#000000"> <g> <rect fill="none" height="24" width="24"></rect> </g> <g> <path d="M21,10h-8.35C11.83,7.67,9.61,6,7,6c-3.31,0-6,2.69-6,6s2.69,6,6,6c2.61,0,4.83-1.67,5.65-4H13l2,2l2-2l2,2l4-4.04L21,10z M7,15c-1.65,0-3-1.35-3-3c0-1.65,1.35-3,3-3s3,1.35,3,3C10,13.65,8.65,15,7,15z"> </path> </g> </svg>
                                     <label slot="right" class="interact">
                                         <input type="checkbox" class="hidden" autocomplete="off" readonly="" onchange="togglePrivateKeyVisibility(this)">
@@ -1287,8 +1358,8 @@
                                     </label>
                                 </sm-input>
                                 <div id="sender_balance_container" class="flex align-center gap-0-3 hidden"></div>
-                            </div>
-                            <div class="flex flex-direction-column gap-1">
+                            </fieldset>
+                            <fieldset class="flex flex-direction-column gap-1">
                                 <div class="flex flex-direction-column gap-0-5">
                                     <h4>Receiver</h4>
                                     <ul id="receivers_container" class="grid gap-1">
@@ -1318,8 +1389,29 @@
                                 <div class="multi-state-button">
                                     <button id="send_tx_button" class="button button--primary" type="submit" disabled onclick="sendTx()">Send</button>
                                 </div>
-                            </div>
+                            </fieldset>
                         </sm-form>
+                    `;
+                }
+
+                renderElem(getRef('page_container'), html`
+                    <div class="flex flex-direction-column gap-1-5">
+                        <div class="flex flex-direction-column gap-0-5">
+                            <h3>
+                                Perform Transaction
+                            </h3>
+                            <sm-switch style="width: fit-content" onchange=${e => setIsScriptMode(!isScriptMode())}>
+                                <p slot="left" style="margin-right: 0.5rem">Toggle script mode</p>    
+                            </sm-switch>
+                        </div>
+                        ${isScriptMode() ? html`
+                            <ul id="taproot_steps" class="steps">
+                                ${[1, 2].map(step => html`
+                                    <li class=${`step ${atTaprootStep() === step ? 'active' : ''} ${atTaprootStep() > step ? 'done' : ''}`}></li>
+                                `)}
+                            </ul>    
+                        `: ''}
+                        ${form}
                     </div>
                 `)
             })
@@ -1331,11 +1423,11 @@
 
                 } else {
                     if (!getRef('send_tx_form').isFormValid) return
-                    const { senderPrivateKey, senderAddress, receivers, receiverAddresses, receiverAmounts } = getTransactionDetails()
+                    const { senderPrivateKey, senderAddress, receiverAddresses, receiverAmounts } = getTransactionDetails()
                     if (!senderPrivateKey || !senderAddress || !receiverAddresses.length || !receiverAmounts.length)
                         return
                     setSuggestedFeeStatus(['calculating'])
-                    const { fee } = await createTx(senderPrivateKey, receiverAddresses, receiverAmounts)
+                    const { fee } = await createTx({ senderPrivateKey, receivers: receiverAddresses, amounts: receiverAmounts })
                     setSuggestedFee(fee)
                     setSuggestedFeeStatus(['success'])
                     getRef('send_tx_button').disabled = false
@@ -1349,6 +1441,117 @@
             setSuggestedFee(0);
             setSuggestedFeeStatus(['idle']);
             getRef('send_tx_button').disabled = true
+        }
+        let taprootScriptTxDetails = {};
+        function proceedTo(step) {
+            if (step) {
+                switch (atTaprootStep()) {
+                    case 1:
+                        if (!getRef('sender_receiver_form').isFormValid) {
+                            notify('Please fill all the details', 'error')
+                            return
+                        }
+                        const { receiverAddresses, receiverAmounts } = getTransactionReceivers()
+                        const senderAddress = getRef('taproot_sender_input').value.trim()
+                        taprootScriptTxDetails = {
+                            senderAddress, receiverAddresses, receiverAmounts,
+                            script: getRef('script_input').value.trim(),
+                            controlBlock: getRef('control_block_input').value.trim(),
+                            solutions: parseInt(getRef('solutions_input').value.trim()),
+                            signTransaction: getRef('sign_transaction_checkbox').checked
+                        }
+                        break;
+                    case 2:
+                        break;
+                }
+                setAtTaprootStep(step)
+            } else {
+                setAtTaprootStep(atTaprootStep() + 1)
+            }
+        }
+        async function sendScriptPathTx() {
+            try {
+                const scriptWitness = []
+                const solutions = document.querySelectorAll('.solution-input')
+                solutions.forEach(solution => {
+                    const decodedSolution = hex.decode(solution.value.trim())
+                    scriptWitness.push(decodedSolution)
+                })
+                const { senderAddress, receiverAddresses, receiverAmounts, script, controlBlock, signTransaction } = taprootScriptTxDetails
+                scriptWitness.push(hex.decode(script), hex.decode(controlBlock))
+                scriptWitness = scriptWitness.map(witness => hex.encode(witness))
+                let signerSecretKey
+                if (signTransaction) {
+                    const signerPrivateKey = getRef('signer_input').value.trim()
+                    if (!signerPrivateKey) {
+                        notify(`Please enter the signer's private key`, 'error')
+                        return
+                    }
+                    signerSecretKey = hex.decode(signerPrivateKey)
+                }
+                const internalKeyPair = keyPairFromSecret('1229101a0fcf2104e8808dab35661134aa5903867d44deb73ce1c7e4eb925be8');
+                const taprootTree = taproot.taprootListToTree([
+                    {
+                        script,
+                        leafVersion: 0xc0,
+                    }
+                ]);
+
+                const taprootCommitment = taproot.p2tr(
+                    internalKeyPair.schnorrPublicKey,
+                    taprootTree,
+                    undefined,
+                    true
+                );
+                const confirmation = await getConfirmation('Confirm transaction', {
+                    message: html`
+                        <div class="grid gap-1-5">
+                            <div class="grid"> 
+                                <span class="label">Sender address</span>
+                                <sm-copy value=${senderAddress}></sm-copy>
+                            </div>
+                            <div class="grid">
+                                <span class="label">Receivers</span>
+                                <div class="grid gap-0-3">
+                                    ${receiverAddresses.map((address, index) => html.node/*html*/`
+                                        <div class="grid gap-0-5" style="padding:0.5rem;border:solid thin rgba(var(--text-color),0.3);border-radius: 0.3rem;">
+                                            <b>${address}</b>
+                                            <b class="amount-shown" data-btc-amount=${receiverAmounts[index]}>${getConvertedAmount(receiverAmounts[index], true)}</b>
+                                        </div>
+                                    `)}
+                                </div>
+                            </div>
+                            <div class="grid">
+                                <span class="label">Fee</span>
+                                <b class="amount-shown" data-btc-amount=${fee}>${getConvertedAmount(fee, true)}</b>
+                            </div>
+                        </div>
+                    `,
+                    confirmText: 'Send',
+                })
+                if (!confirmation)
+                    return;
+                buttonLoader('taproot_script_path_send_button', true)
+                const { txHex } = await createTx({
+                    senderAddress,
+                    receivers: receiverAddresses,
+                    amounts: receiverAmounts,
+                    scriptWitness,
+                    tr: taprootCommitment,
+                    signerSecretKey
+                })
+                console.log(txHex)
+                btcOperator.broadcastTx(txHex).then(txid => {
+                    showTransactionResult(true, txid)
+                }).catch(err => {
+                    showTransactionResult(false, err)
+                }).finally(() => {
+                    buttonLoader('taproot_script_path_send_button', false)
+                })
+            } catch (e) {
+                notify(e, 'error')
+                buttonLoader('taproot_script_path_send_button', false)
+            }
         }
         router.addRoute('convert', (state) => {
             const convertingFrom = state.params.from || 'flo';
@@ -1556,7 +1759,7 @@
                 notify(e, 'error')
             })
         }
-        function handlePrivateKeyInput(e) {
+        function handleSenderInput(e) {
             getRef('check_balance_button').disabled = !e.target.isValid
             if (!e.target.isValid) {
                 getRef('sender_balance_container').classList.add('hidden')
@@ -1605,11 +1808,7 @@
         function removeReceiver(button) {
             button.closest('.receiver-wrapper').remove()
         }
-        function getTransactionDetails() {
-            const senderPrivateKey = getRef('private_key_input').value.trim();
-            const senderAddress = getTaprootAddress(senderPrivateKey).tr.address;
-            if (btcOperator.validateAddress(senderAddress) !== 'bech32m')
-                return notify('Sender address is not a Taproot address', 'error')
+        function getTransactionReceivers() {
             const receivers = [...getRef('receivers_container').children].reduce((receivers, receiver) => {
                 const receiverAddress = receiver.querySelector('.receiver-address').value.trim()
                 let amount = parseFloat(receiver.querySelector('.receiver-amount').value.trim())
@@ -1621,6 +1820,14 @@
             }, {})
             const receiverAddresses = Object.keys(receivers)
             const receiverAmounts = Object.values(receivers)
+            return { receivers, receiverAddresses, receiverAmounts }
+        }
+        function getTransactionDetails() {
+            const senderPrivateKey = getRef('private_key_input').value.trim();
+            const senderAddress = getTaprootAddress(senderPrivateKey).tr.address;
+            if (btcOperator.validateAddress(senderAddress) !== 'bech32m')
+                return notify('Sender address is not a Taproot address', 'error')
+            const { receivers, receiverAddresses, receiverAmounts } = getTransactionReceivers()
             let fee = parseFloat(getRef('fee_input')?.value.trim()) || 0
             fee = fee / (globalExchangeRate[selectedCurrency] || 1)
             return { senderPrivateKey, senderAddress, receivers, receiverAddresses, receiverAmounts, fee }
@@ -1657,7 +1864,7 @@
                 if (!confirmation)
                     return;
                 buttonLoader('send_tx_button', true)
-                const { txHex } = await createTx(senderPrivateKey, receiverAddresses, receiverAmounts, fee)
+                const { txHex } = await createTx({ senderPrivateKey, receivers: receiverAddresses, amounts: receiverAmounts, fee })
                 console.log(txHex)
                 btcOperator.broadcastTx(txHex).then(txid => {
                     showTransactionResult(true, txid)
@@ -1906,11 +2113,12 @@
          * @param {array} array of amounts in BTC
          * @param {number} fee in BTC
          */
-        async function createTx(senderPrivateKey, receivers = [], amounts = [], fee = 0) {
-            console.log(amounts)
+        async function createTx(params = {}) {
+            let { senderPrivateKey, receivers = [], amounts = [], fee = 0, isTaprootScriptPath = false, tr, witness, signerSecretKey } = params
             return new Promise(async (resolve, reject) => {
                 try {
-                    const { tr } = getTaprootAddress(senderPrivateKey)
+                    if (!tr)
+                        tr = getTaprootAddress(senderPrivateKey).tr
                     const { address, script } = tr
                     const opts = {};
                     const tx = new taproot.Transaction(opts);
@@ -1935,9 +2143,15 @@
                     if (changeAmount < 0)
                         return reject(`Insufficient balance. Required: ${getConvertedAmount(totalAmount + fee, true)}, Available: ${getConvertedAmount(btcOperator.util.Sat_to_BTC(senderBalance), true)}`)
                     tx.addOutputAddress(address, BigInt(btcOperator.util.BTC_to_Sat(changeAmount)));
-                    const privKey = coinjs.wif2privkey(senderPrivateKey).privkey;
-                    const privKey_arrayForm = hex.decode(privKey);
-                    tx.sign(privKey_arrayForm, undefined, new Uint8Array(32));
+                    if (isTaprootScriptPath) {
+                        // TODO: check this
+                        tx.witness = witness;
+                        tx.sign(signerSecretKey, undefined, new Uint8Array(32));
+                    } else {
+                        const privKey = coinjs.wif2privkey(senderPrivateKey).privkey;
+                        const privKey_arrayForm = hex.decode(privKey);
+                        tx.sign(privKey_arrayForm, undefined, new Uint8Array(32));
+                    }
                     tx.finalize()
                     resolve({ txHex: tx.hex, fee })
                 } catch (e) {
@@ -1972,8 +2186,10 @@
                             continue;
                         // changes for taproot
                         const input = { txid: tx_hash_big_endian, index: tx_output_n, script: tr.script, amount: BigInt(value) }
-                        tx.addInput({ ...input, ...tr, witnessUtxo: { script: input.script, amount: input.amount }, });
+                        tx.addInput({ ...input, ...tr, witnessUtxo: { script: input.script, amount: input.amount } });
 
+                        //TODO: verify this 
+                        //  tx.addInput({ ...input, ...taprootCommitment, witnessUtxo: { script: taprootCommitment.script, amount: input.amount }});
 
                         //update track values
                         rec_args.input_size += size_per_input; // Adjust input size calculation
@@ -2056,6 +2272,17 @@
                 }).catch(error => reject(error))
             })
         }
+    </script>
+
+    <script>
+        keyPairFromSecret = (hexSecretKey) => {
+            const secretKey = hex.decode(hexSecretKey);
+            const schnorrPublicKey = secp256k1_schnorr.getPublicKey(secretKey);
+            return {
+                schnorrPublicKey,
+                secretKey,
+            };
+        };
     </script>
 </body>
 

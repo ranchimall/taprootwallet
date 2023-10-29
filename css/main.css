@@ -233,6 +233,10 @@ details[open] > summary .down-arrow {
   transform: rotate(180deg);
 }
 
+fieldset {
+  border: none;
+}
+
 sm-input {
   --border-radius: 0.5rem;
   --background-color: rgba(var(--foreground-color), 1);
@@ -834,7 +838,9 @@ theme-toggle {
   height: 0.3rem;
   background: var(--accent-color);
   border-radius: 1rem 1rem 0 0;
-  z-index: 1;
+}
+
+body.loaded .nav-item__indicator {
   view-transition-name: indicator;
 }
 
@@ -1046,7 +1052,7 @@ theme-toggle {
 }
 
 .primary-action {
-  padding: 0.5rem 0.7rem 0.5rem 0.5rem;
+  padding: 0.6rem 0.8rem 0.6rem 0.6rem;
   gap: 0.5rem;
   white-space: normal;
   font-size: 0.9rem;
@@ -1216,6 +1222,56 @@ theme-toggle {
   color: rgba(var(--text-color), 0.9);
 }
 
+.steps {
+  display: flex;
+  counter-reset: step;
+  width: min(36rem, 100%);
+}
+
+.step {
+  counter-increment: step;
+  display: flex;
+  align-items: center;
+  position: relative;
+  height: 2rem;
+  flex: 1;
+}
+.step::before {
+  content: counter(step);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: 50%;
+  background-color: rgba(var(--text-color), 0.03);
+  color: rgba(var(--text-color), 0.8);
+  font-weight: 500;
+  margin-right: 0.5rem;
+  aspect-ratio: 1/1;
+  font-size: 0.9rem;
+}
+.step:not(:last-of-type) {
+  margin-right: 0.5rem;
+}
+.step:not(:last-of-type)::after {
+  content: "";
+  width: 100%;
+  height: 0.1rem;
+  background-color: rgba(var(--text-color), 0.3);
+}
+.step.active::before {
+  background-color: var(--accent-color);
+  color: rgba(var(--background-color), 1);
+}
+.step.done::before {
+  background-color: var(--accent-color);
+  color: rgba(var(--background-color), 1);
+}
+.step.done::after {
+  background-color: var(--accent-color);
+}
+
 @media only screen and (max-width: 640px) {
   .hide-on-small {
     display: none;
@@ -1283,15 +1339,18 @@ theme-toggle {
 #convert_to_taproot_popup {
     --width: min(36rem, 100%);
   }
-  #send_tx_form::part(form) {
+  #send_tx_form::part(form),
+#sender_receiver_form::part(form) {
     gap: 1rem;
     grid-template-columns: 1fr 1fr;
   }
-  #send_tx_form > * {
+  #send_tx_form > fieldset,
+#sender_receiver_form > fieldset {
     align-self: flex-start;
     border-radius: 0.8rem;
     padding: 1.5rem;
     background-color: rgba(var(--text-color), 0.03);
+    border: none;
   }
   #convert {
     width: min(72rem, 100%);
@@ -1335,5 +1394,13 @@ theme-toggle {
   }
   .button:not([disabled]):hover {
     filter: contrast(2);
+  }
+}
+@media (prefers-reduced-motion) {
+  ::view-transition-group(*),
+::view-transition-old(*),
+::view-transition-new(*) {
+    -webkit-animation: none !important;
+            animation: none !important;
   }
 }
