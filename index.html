@@ -639,15 +639,20 @@
          */
         function $signal(initialValue, callback) {
             let value = initialValue;
-            const subscribers = new Set();
+            const subscribers = new Map();
             let hasCustomSubscriber = false;
             function getter(subscriber) {
-                if (currentSubscriber) {
-                    subscribers.add(currentSubscriber);
-                }
                 if (!hasCustomSubscriber && subscriber) {
-                    subscribers.add(subscriber)
+                    currentSubscriber = subscriber;
                     hasCustomSubscriber = true
+                }
+                if (currentSubscriber) {
+                    let hash = currentSubscriber.toString();
+                    if (Crypto)
+                        hash = Crypto.SHA1(currentSubscriber.toString())
+                    if (!subscribers.has(hash)) {
+                        subscribers.set(hash, currentSubscriber);
+                    }
                 }
                 return value;
             }
@@ -655,9 +660,9 @@
             function setter(newValue) {
                 if (newValue === value) return;
                 value = newValue;
-                for (const subscriber of subscribers) {
+                subscribers.forEach((subscriber, hash) => {
                     subscriber();
-                }
+                });
             }
             return [getter, setter];
         }
@@ -1244,8 +1249,8 @@
         const [suggestedFeeStatus, setSuggestedFeeStatus] = $signal(['idle'])
         const [feeType, setFeeType] = $signal('suggested')
         const [atTaprootStep, setAtTaprootStep] = $signal(1);
+        const [isScriptMode, setIsScriptMode] = $signal(false);
         router.addRoute('send', (state) => {
-            const [isScriptMode, setIsScriptMode] = $signal(false);
             $effect(() => {
                 let feeSection = ''
                 if (feeType() === 'suggested') {
@@ -1317,7 +1322,7 @@
                             form = html`
                                 <sm-form id="script_details_form" style="max-width: 36rem">
                                     <div class="flex flex-direction-column gap-1">
-                                        ${[...Array(taprootScriptTxDetails.solutions).keys()].map(index => html`
+                                        ${[...Array(taprootScriptTxDetails.solutions || 0).keys()].map(index => html`
                                             <sm-input class="solution-input" placeholder=${`Solution ${index + 1} (hex)`} pattern="^[0-9A-Fa-f]+$" error-text="Only hexadecimal values are allowed" animate required></sm-input>
                                         `)} 
                                     </div>
@@ -1331,9 +1336,21 @@
                                             </label>
                                         </sm-input>
                                     `: ''}
+                                    <div class="grid gap-0-5">
+                                        <div class="flex align-center space-between gap-1">
+                                            <h4>Fee</h4>
+                                            <sm-chips onchange=${e => { setFeeType(e.target.value); calculateSuggestedFee('script-path'); }}>
+                                                <sm-chip value="suggested" selected>Suggested</sm-chip>
+                                                <sm-chip value="custom">Custom</sm-chip>
+                                            </sm-chips>
+                                        </div>
+                                        ${feeSection}
+                                    </div>
                                     <div class="flex gap-0-5">
                                         <button class="button button--colored" onclick="proceedTo(1)">Back</button>
-                                        <button id="taproot_script_path_send_button" class="button button--primary flex-1" type="submit" disabled onclick=${sendScriptPathTx}>Send</button>
+                                        <div class="multi-state-button flex-1">
+                                            <button id="taproot_script_path_send_button" class="button button--primary" type="submit" disabled onclick=${sendScriptPathTx}>Send</button>
+                                        </div>
                                     </div>
                                 </sm-form>
                             `
@@ -1341,11 +1358,11 @@
                     }
                 } else {
                     form = html`
-                        <sm-form id="send_tx_form" onvalid=${calculateSuggestedFee} oninvalid=${handleInvalidForm} ?skip-submit=${feeType() === 'suggested'}>
+                        <sm-form id="send_tx_form" onvalid=${() => calculateSuggestedFee('key-path')} oninvalid=${handleInvalidForm} ?skip-submit=${feeType() === 'suggested'}>
                             <fieldset class="flex flex-direction-column gap-0-5">
                                 <div class="flex space-between align-center">
                                     <h4>Sender</h4>
-                                    <button id="check_balance_button" class="button button--small button--colored" disabled onclick="checkBalance()">
+                                    <button id="check_balance_button" class="button button--small button--colored" disabled onclick=${checkBalance}>
                                         Check balance
                                     </button>
                                 </div>
@@ -1379,7 +1396,7 @@
                                 <div class="grid gap-0-5">
                                     <div class="flex align-center space-between gap-1">
                                         <h4>Fee</h4>
-                                        <sm-chips onchange=${e => { setFeeType(e.target.value); calculateSuggestedFee(); }}>
+                                        <sm-chips onchange=${e => { setFeeType(e.target.value); calculateSuggestedFee('key-path'); }}>
                                             <sm-chip value="suggested" selected>Suggested</sm-chip>
                                             <sm-chip value="custom">Custom</sm-chip>
                                         </sm-chips>
@@ -1393,15 +1410,14 @@
                         </sm-form>
                     `;
                 }
-
                 renderElem(getRef('page_container'), html`
                     <div class="flex flex-direction-column gap-1-5">
                         <div class="flex flex-direction-column gap-0-5">
                             <h3>
                                 Perform Transaction
                             </h3>
-                            <sm-switch style="width: fit-content" onchange=${e => setIsScriptMode(!isScriptMode())}>
-                                <p slot="left" style="margin-right: 0.5rem">Toggle script mode</p>    
+                            <sm-switch style="width: fit-content" ?checked=${isScriptMode()} onchange=${e => setIsScriptMode(e.target.value)}>
+                                <p slot="left" style="margin-right: 0.5rem">Toggle script path mode</p>    
                             </sm-switch>
                         </div>
                         ${isScriptMode() ? html`
@@ -1416,21 +1432,25 @@
                 `)
             })
         })
-        async function calculateSuggestedFee() {
+        async function calculateSuggestedFee(type = 'key-path') {
             try {
-                getRef('send_tx_button').disabled = true
+                const submitButton = getRef('send_tx_button') || getRef('taproot_script_path_send_button')
+                submitButton.disabled = true
                 if (feeType() === 'custom') {
 
                 } else {
-                    if (!getRef('send_tx_form').isFormValid) return
-                    const { senderPrivateKey, senderAddress, receiverAddresses, receiverAmounts } = getTransactionDetails()
-                    if (!senderPrivateKey || !senderAddress || !receiverAddresses.length || !receiverAmounts.length)
-                        return
                     setSuggestedFeeStatus(['calculating'])
-                    const { fee } = await createTx({ senderPrivateKey, receivers: receiverAddresses, amounts: receiverAmounts })
-                    setSuggestedFee(fee)
+                    if (type === 'key-path') {
+                        const { senderPrivateKey, receiverAddresses, receiverAmounts } = getTransactionDetails();
+                        const { fee } = await createTx({ senderPrivateKey, receivers: receiverAddresses, amounts: receiverAmounts })
+                        setSuggestedFee(fee)
+                    } else if (type === 'script-path') {
+                        const { senderAddress, receiverAddresses, receiverAmounts } = taprootScriptTxDetails;
+                        const { fee } = await createTx({ isTaprootScriptPath: true, senderAddress, receivers: receiverAddresses, amounts: receiverAmounts })
+                        setSuggestedFee(fee)
+                    }
                     setSuggestedFeeStatus(['success'])
-                    getRef('send_tx_button').disabled = false
+                    submitButton.disabled = false
                 }
             } catch (e) {
                 console.error(e)
@@ -1440,33 +1460,35 @@
         function handleInvalidForm() {
             setSuggestedFee(0);
             setSuggestedFeeStatus(['idle']);
-            getRef('send_tx_button').disabled = true
+            (getRef('send_tx_button') || getRef('taproot_script_path_send_button')).disabled = true
         }
         let taprootScriptTxDetails = {};
         function proceedTo(step) {
-            if (step) {
-                switch (atTaprootStep()) {
-                    case 1:
-                        if (!getRef('sender_receiver_form').isFormValid) {
-                            notify('Please fill all the details', 'error')
-                            return
-                        }
-                        const { receiverAddresses, receiverAmounts } = getTransactionReceivers()
-                        const senderAddress = getRef('taproot_sender_input').value.trim()
-                        taprootScriptTxDetails = {
-                            senderAddress, receiverAddresses, receiverAmounts,
-                            script: getRef('script_input').value.trim(),
-                            controlBlock: getRef('control_block_input').value.trim(),
-                            solutions: parseInt(getRef('solutions_input').value.trim()),
-                            signTransaction: getRef('sign_transaction_checkbox').checked
-                        }
-                        break;
-                    case 2:
-                        break;
-                }
-                setAtTaprootStep(step)
-            } else {
-                setAtTaprootStep(atTaprootStep() + 1)
+            if (!step) return
+            switch (atTaprootStep()) {
+                case 1:
+                    // if (!getRef('sender_receiver_form').isFormValid) {
+                    //     notify('Please fill all the details', 'error')
+                    //     return
+                    // }
+                    const { receiverAddresses, receiverAmounts } = getTransactionReceivers()
+                    const senderAddress = getRef('taproot_sender_input').value.trim()
+                    taprootScriptTxDetails = {
+                        senderAddress, receiverAddresses, receiverAmounts,
+                        script: getRef('script_input').value.trim(),
+                        controlBlockHex: getRef('control_block_input').value.trim(),
+                        solutions: parseInt(getRef('solutions_input').value.trim()),
+                        signTransaction: getRef('sign_transaction_checkbox').checked
+                    }
+                    break;
+                case 2:
+                    break;
+            }
+            setAtTaprootStep(step)
+            switch (step) {
+                case 2:
+                    calculateSuggestedFee('script-path')
+                    break;
             }
         }
         async function sendScriptPathTx() {
@@ -1477,9 +1499,8 @@
                     const decodedSolution = hex.decode(solution.value.trim())
                     scriptWitness.push(decodedSolution)
                 })
-                const { senderAddress, receiverAddresses, receiverAmounts, script, controlBlock, signTransaction } = taprootScriptTxDetails
-                scriptWitness.push(hex.decode(script), hex.decode(controlBlock))
-                scriptWitness = scriptWitness.map(witness => hex.encode(witness))
+                const { senderAddress, receiverAddresses, receiverAmounts, script, controlBlockHex, signTransaction } = taprootScriptTxDetails
+                scriptWitness.push(hex.decode(script), hex.decode(controlBlockHex))
                 let signerSecretKey
                 if (signTransaction) {
                     const signerPrivateKey = getRef('signer_input').value.trim()
@@ -1489,20 +1510,6 @@
                     }
                     signerSecretKey = hex.decode(signerPrivateKey)
                 }
-                const internalKeyPair = keyPairFromSecret('1229101a0fcf2104e8808dab35661134aa5903867d44deb73ce1c7e4eb925be8');
-                const taprootTree = taproot.taprootListToTree([
-                    {
-                        script,
-                        leafVersion: 0xc0,
-                    }
-                ]);
-
-                const taprootCommitment = taproot.p2tr(
-                    internalKeyPair.schnorrPublicKey,
-                    taprootTree,
-                    undefined,
-                    true
-                );
                 const confirmation = await getConfirmation('Confirm transaction', {
                     message: html`
                         <div class="grid gap-1-5">
@@ -1537,8 +1544,9 @@
                     receivers: receiverAddresses,
                     amounts: receiverAmounts,
                     scriptWitness,
-                    tr: taprootCommitment,
-                    signerSecretKey
+                    signerSecretKey,
+                    userScript: hex.decode(script),
+                    userControlBlock: taproot.TaprootControlBlock.decode(hex.decode(controlBlockHex))
                 })
                 console.log(txHex)
                 btcOperator.broadcastTx(txHex).then(txid => {
@@ -1735,21 +1743,29 @@
         })
 
         function checkBalance() {
-            const wif = getRef('private_key_input').value.trim()
-            if (!wif)
-                return notify(`Please enter sender's private key to check balance`)
+            let address;
+            const hasProvidedPrivateKey = !!getRef('private_key_input')
+            if (hasProvidedPrivateKey) {
+                const wif = getRef('private_key_input').value.trim()
+                if (!wif)
+                    return notify(`Please enter sender's private key to check balance`)
+                address = getTaprootAddress(wif).tr.address
+            } else {
+                address = getRef('taproot_sender_input').value.trim()
+            }
             getRef('sender_balance_container').classList.remove('hidden')
             renderElem(getRef('sender_balance_container'), html`
                 Loading balance...<sm-spinner></sm-spinner>
             `)
-            const { tr: { address } } = getTaprootAddress(wif)
             btcOperator.getBalance(address).then(balance => {
                 renderElem(getRef('sender_balance_container'), html`
                     <div class="grid gap-1" style="padding: 1rem; border-radius: 0.5rem; border: solid thin rgba(var(--text-color),0.3)">
-                        <div class="grid">
-                            <p class="label">Sender address</p>
-                            <sm-copy value=${address}><p>${address}<p></sm-copy>
-                        </div>
+                        ${hasProvidedPrivateKey ? html`
+                            <div class="grid">
+                                <p class="label">Sender address</p>
+                                <sm-copy value=${address}><p>${address}<p></sm-copy>
+                            </div>
+                        `: ''}
                         <p>
                             Balance: <b class="amount-shown" data-btc-amount=${balance}>${getConvertedAmount(balance, true)}</b>
                         </p>
@@ -2076,7 +2092,7 @@
             const { privkey } = coinjs.wif2privkey(wif)
             const privKey_arrayform = hex.decode(privkey)
             const pubS = secp256k1_schnorr.getPublicKey(privKey_arrayform);
-            const tr = btc.p2tr(pubS);
+            const tr = taproot.p2tr(pubS);
             return {
                 tr,
                 wif
@@ -2114,45 +2130,66 @@
          * @param {number} fee in BTC
          */
         async function createTx(params = {}) {
-            let { senderPrivateKey, receivers = [], amounts = [], fee = 0, isTaprootScriptPath = false, tr, witness, signerSecretKey } = params
             return new Promise(async (resolve, reject) => {
+                let {
+                    senderAddress,
+                    senderPrivateKey,
+                    receivers = [],
+                    amounts = [],
+                    fee = 0,
+                    isTaprootScriptPath = false,
+                    scriptWitness,
+                    userScript,
+                    signerSecretKey,
+                    userControlBlock,
+                } = params
                 try {
-                    if (!tr)
+                    let tr
+                    let address, script
+                    let opts = {};
+                    if (isTaprootScriptPath) {
+                        address = senderAddress
+                        script = hex.decode(coinjs.addressDecode(senderAddress).outstring)
+                        opts = { allowUnknownInputs: true }
+                    } else {
                         tr = getTaprootAddress(senderPrivateKey).tr
-                    const { address, script } = tr
-                    const opts = {};
+                        address = tr.address
+                        script = tr.script
+                    }
                     const tx = new taproot.Transaction(opts);
                     const totalAmount = amounts.reduce((total, amount) => total + amount, 0)
                     const amountInSat = btcOperator.util.BTC_to_Sat(totalAmount)
-                    // check if sender has enough balance
-                    const senderBalance = await btcOperator.getBalance(address)
-                    const feeRate = await btcOperator.getFeeRate();
+                    const [senderBalance, feeRate] = await Promise.all([btcOperator.getBalance(address), btcOperator.getFeeRate()]);
                     let calculatedFee = 0;
-                    const { input_size } = await addUTXOs(tx, tr, [address], btcOperator.util.BTC_to_Sat(totalAmount), feeRate)
+                    const { input_size, consumedUtxoInputs } = await addUTXOs(tx, tr, [address], btcOperator.util.BTC_to_Sat(totalAmount), feeRate)
                     calculatedFee += input_size
                     // add receivers
                     receivers.forEach((receiver, i) => {
                         tx.addOutputAddress(receiver, BigInt(btcOperator.util.BTC_to_Sat(amounts[i])))
                         calculatedFee += _sizePerOutput(receiver)
                     })
-                    calculatedFee += _sizePerOutput(address)
+                    calculatedFee += _sizePerOutput(address) // add change output
                     calculatedFee = parseFloat((calculatedFee * feeRate).toFixed(8)) // convert to sat
                     fee = fee || calculatedFee; // if fee is not provided, pass calculated fee
                     // add change address
                     const changeAmount = senderBalance - (totalAmount + fee)
-                    if (changeAmount < 0)
-                        return reject(`Insufficient balance. Required: ${getConvertedAmount(totalAmount + fee, true)}, Available: ${getConvertedAmount(btcOperator.util.Sat_to_BTC(senderBalance), true)}`)
+                    // if (changeAmount < 0)
+                    //     return resolve({
+                    //         txHex: null,
+                    //         fee: calculatedFee
+                    //     })
                     tx.addOutputAddress(address, BigInt(btcOperator.util.BTC_to_Sat(changeAmount)));
                     if (isTaprootScriptPath) {
-                        // TODO: check this
-                        tx.witness = witness;
-                        tx.sign(signerSecretKey, undefined, new Uint8Array(32));
+                        if (signerSecretKey) {
+                            const hash = tx.preimageWitnessV1(0, [script], 0, consumedUtxoInputs, "", userScript, userControlBlock.version)
+                            const sig = secp.schnorr.signSync(hash, signerSecretKey, new Uint8Array(32))
+                        }
+                        tx.inputs.forEach(input => input.finalScriptWitness = scriptWitness)
                     } else {
                         const privKey = coinjs.wif2privkey(senderPrivateKey).privkey;
-                        const privKey_arrayForm = hex.decode(privKey);
-                        tx.sign(privKey_arrayForm, undefined, new Uint8Array(32));
+                        tx.sign(hex.decode(privKey), undefined, new Uint8Array(32));
+                        tx.finalize()
                     }
-                    tx.finalize()
                     resolve({ txHex: tx.hex, fee })
                 } catch (e) {
                     reject(e)
@@ -2166,11 +2203,13 @@
                     rec_args.n = 0;
                     rec_args.input_size = 0;
                     rec_args.input_amount = 0;
+                    rec_args.consumedUtxoInputs = [];
                 }
                 if (required_amount <= 0)
                     return resolve({
                         input_size: rec_args.input_size,
                         input_amount: rec_args.input_amount,
+                        consumedUtxoInputs: rec_args.consumedUtxoInputs,
                         change_amount: required_amount * -1 //required_amount will be -ve of change_amount
                     });
                 else if (rec_args.n >= senders.length)
@@ -2185,15 +2224,25 @@
                         if (!confirmations) //ignore unconfirmed utxo
                             continue;
                         // changes for taproot
-                        const input = { txid: tx_hash_big_endian, index: tx_output_n, script: tr.script, amount: BigInt(value) }
-                        tx.addInput({ ...input, ...tr, witnessUtxo: { script: input.script, amount: input.amount } });
-
-                        //TODO: verify this 
-                        //  tx.addInput({ ...input, ...taprootCommitment, witnessUtxo: { script: taprootCommitment.script, amount: input.amount }});
-
+                        const inputScript = tr ? tr.script : hex.decode(coinjs.addressDecode(addr).outstring);
+                        let input = {
+                            txid: tx_hash_big_endian,
+                            index: tx_output_n,
+                            script: inputScript,
+                            amount: BigInt(value),
+                            witnessUtxo: {
+                                script: inputScript,
+                                amount: BigInt(value)
+                            }
+                        }
+                        if (tr)
+                            input = { ...input, ...tr }
+                        console.log(input)
+                        tx.addInput(input);
                         //update track values
                         rec_args.input_size += size_per_input; // Adjust input size calculation
                         rec_args.input_amount += value;
+                        rec_args.consumedUtxoInputs.push(value);
                         required_amount -= value;
                         if (fee_rate) //automatic fee calculation (dynamic)
                             required_amount += size_per_input * fee_rate;
@@ -2283,6 +2332,62 @@
                 secretKey,
             };
         };
+        // generate new private key
+        internalKeyPair = keyPairFromSecret(
+            '1229101a0fcf2104e8808dab35661134aa5903867d44deb73ce1c7e4eb925be8'
+        );
+
+        preimage = hashmini.sha256(
+            hex.decode('107661134f21fc7c02223d50ab9eb3600bc3ffc3712423a1e47bb1f9a9dbf55f')
+        );
+
+        aliceKeyPair = keyPairFromSecret(
+            '2bd806c97f0e00af1a1fc3328fa763a9269723c8db8fac4f93af71db186d6e90'
+        );
+
+        bobKeyPair = keyPairFromSecret(
+            '81b637d8fcd2c6da6359e6963113a1170de795e4b725b84d1e0b4cfd9ec58ce9'
+        );
+
+        scriptAlice = new Uint8Array([
+            0x02,
+            144,
+            0x00,
+            btc.OP.CHECKSEQUENCEVERIFY,
+            btc.OP.DROP,
+            0x20,
+            ...aliceKeyPair.schnorrPublicKey,
+            0xac,
+        ]);
+
+        scriptBob = new Uint8Array([
+            btc.OP.SHA256,
+            0x20,
+            ...preimage,
+            btc.OP.EQUALVERIFY,
+            0x20,
+            ...bobKeyPair.schnorrPublicKey,
+            0xac,
+        ]);
+
+        taprootTree = btc.taprootListToTree([
+            {
+                script: scriptAlice,
+                leafVersion: 0xc0,
+            },
+            {
+                script: scriptBob,
+                leafVersion: 0xc0,
+            },
+        ]);
+
+
+        taprootCommitment = btc.p2tr(
+            internalKeyPair.schnorrPublicKey,
+            taprootTree,
+            undefined,
+            true
+        );
     </script>
 </body>
 
