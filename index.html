@@ -94,10 +94,23 @@
                         </span>
                     </a>
                 </li>
+                <li>
+                    <a href="#/create" class="nav-item interactive">
+                        <svg class="icon" xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 0 24 24"
+                            width="24px" fill="#000000">
+                            <path d="M0 0h24v24H0V0z" fill="none" />
+                            <path
+                                d="M13 7h-2v4H7v2h4v4h2v-4h4v-2h-4V7zm-1-5C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z" />
+                        </svg>
+                        <span class="nav-item__title">
+                            Create
+                        </span>
+                    </a>
+                </li>
             </ul>
         </nav>
     </main>
-    <sm-popup id="generate_address_popup">
+    <sm-popup id="generate_key_path_address_popup">
         <header slot="header" class="popup__header">
             <div class="flex align-center">
                 <button class="popup__header__close" onclick="closePopup()">
@@ -122,6 +135,21 @@
             </div>
             <div id="generated_btc_addr" class="generated-id-card"></div>
         </div>
+    </sm-popup>
+    <sm-popup id="generate_script_path_address_popup">
+        <header slot="header" class="popup__header">
+            <div class="flex align-center">
+                <button class="popup__header__close" onclick="closePopup()">
+                    <svg class="icon" xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 0 24 24" width="24px"
+                        fill="#000000">
+                        <path d="M0 0h24v24H0V0z" fill="none" />
+                        <path
+                            d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12 19 6.41z" />
+                    </svg>
+                </button>
+            </div>
+        </header>
+        <div id="generate_script_path_address_popup__content"></div>
     </sm-popup>
     <sm-popup id="convert_to_taproot_popup">
         <header slot="header" class="popup__header">
@@ -251,19 +279,86 @@
 
         document.addEventListener('popupopened', e => {
             switch (e.target.id) {
-                case 'generate_address_popup':
+                case 'generate_key_path_address_popup': {
                     const { wif, tr: { address } } = getTaprootAddress()
                     renderElem(getRef('generated_btc_addr'), html`
-                <div>
-                    <h5>BTC Address</h5>
-                    <sm-copy value="${address}"></sm-copy>
-                </div>
-                <div>
-                    <h5>Private Key</h5>
-                    <sm-copy value="${wif}"></sm-copy>
-                </div>
-            `);
+                        <div>
+                            <h5>BTC Address</h5>
+                            <sm-copy value="${address}"></sm-copy>
+                        </div>
+                        <div>
+                            <h5>Private Key</h5>
+                            <sm-copy value="${wif}"></sm-copy>
+                        </div>
+                    `);
                     break;
+                }
+                case 'generate_script_path_address_popup': {
+                    const { wif, tr: { address } } = getTaprootAddress()
+                    const privateKey = coinjs.wif2privkey(wif).privkey
+                    console.log(wif, address)
+                    const scriptInputs = [1];
+                    const renderScriptInput = (index) => html`
+                        <div class="flex gap-0-5">
+                            <sm-input class="member-script-input flex-1" placeholder=${`Member script #${index + 1} (Hex)`} pattern="^[0-9A-Fa-f]+$" error-text="Only hexadecimal values are allowed" animate required></sm-input>
+                            ${index ? html`
+                                <button class="button button--danger" onclick=${() => removeScriptInput(index)} title="Remove">
+                                    <svg class="icon" xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 0 24 24" width="24px" fill="#000000"><path d="M0 0h24v24H0V0z" fill="none"/><path d="M16 9v10H8V9h8m-1.5-6h-5l-1 1H5v2h14V4h-3.5l-1-1zM18 7H6v12c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7z"/></svg>
+                                </button>
+                            `: ''}
+                        </div>
+                    `
+                    function addMemberScriptInput() {
+                        scriptInputs.push(scriptInputs.length + 1)
+                        renderScriptInputList()
+                    }
+                    function removeScriptInput(index) {
+                        scriptInputs.splice(index, 1)
+                        renderScriptInputList()
+                    }
+                    function generateScriptPathAddress() {
+                        const schnorrPublicKey = secp256k1_schnorr.getPublicKey(hex.decode(privateKey));
+                        const taprootTree = [...document.querySelectorAll('.member-script-input')].map(input => {
+                            return {
+                                script: input.value.trim(),
+                                leafVersion: 0xc0,
+                            }
+                        })
+                        const { address } = taproot.p2tr(
+                            schnorrPublicKey,
+                            taprootTree,
+                            undefined,
+                            true
+                        );
+                        renderElem(getRef('generate_script_path_address_popup__content'), html`
+                            <div class="grid gap-1">
+                                <h4>Generated Taproot script-path address</h4>
+                                <sm-copy value="${address}"></sm-copy>
+                            </div>
+                        `);
+                    }
+                    function renderScriptInputList() {
+                        renderElem(getRef('generate_script_path_address_popup__content'), html`
+                            <sm-form>
+                                <div class="grid gap-1">
+                                    <h4>Add member scripts</h4>
+                                    <div id="member_input_container" class="grid gap-0-5">
+                                        ${scriptInputs.map((no, index) => renderScriptInput(index))}
+                                    </div>
+                                </div>
+                                <div class="flex gap-0-5">
+                                    <button class="button button--colored margin-right-auto" onclick=${addMemberScriptInput}>
+                                        Add member
+                                    </button>
+                                    <button id="create_script_path_address_button" class="button button--primary flex-1" onclick=${generateScriptPathAddress} type="submit" disabled>Create</button>
+                                </div>
+                            </sm-form>
+                        `);
+                        getRef('create_script_path_address_button').scrollIntoView({ behavior: 'smooth' })
+                    }
+                    renderScriptInputList()
+                    break;
+                }
             }
         })
         document.addEventListener('popupclosed', e => {
@@ -1170,6 +1265,9 @@
                 const { page } = state
                 if (!page)
                     page = 'search'
+                if (page !== 'send') {
+                    taprootScriptTxDetails = {}
+                }
                 const previousTarget = getRef('main_navbar').querySelector('.nav-item--active')
                 if (previousTarget) {
                     previousTarget.classList.remove('nav-item--active')
@@ -1201,20 +1299,6 @@
                                 <svg slot="icon" class="icon" xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 0 24 24" width="24px" fill="#000000"> <path d="M0 0h24v24H0V0z" fill="none"></path> <path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"></path> </svg>
                             </button>
                         </sm-form>
-                        <menu class="flex gap-0-5">
-                            <li>
-                                <button class="button button--colored primary-action" onclick="openPopup('generate_address_popup')">
-                                    <svg class="icon" xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 0 24 24" width="24px" fill="#000000"> <path d="M0 0h24v24H0V0z" fill="none" /> <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm5 11h-4v4h-2v-4H7v-2h4V7h2v4h4v2z" /> </svg>
-                                    Create new address
-                                </button>
-                            </li>
-                            <li>
-                                <button class="button button--colored primary-action" onclick="openPopup('convert_to_taproot_popup')">
-                                    <svg class="icon" xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 0 24 24" width="24px" fill="#000000"> <path d="M0 0h24v24H0V0z" fill="none" /> <path d="M6.99 11L3 15l3.99 4v-3H14v-2H6.99v-3zM21 9l-3.99-4v3H10v2h7.01v3L21 9z" /> </svg>
-                                    Retrieve Taproot address
-                                </button>
-                            </li>
-                        </menu>
                         <div id="address_details" class="hidden flex flex-direction-column gap-1">
                             <div id="address_balance_card" class="grid gap-1 hidden">
                                 <div class="flex">
@@ -1357,6 +1441,7 @@
                             break;
                     }
                 } else {
+                    taprootScriptTxDetails = {}
                     form = html`
                         <sm-form id="send_tx_form" onvalid=${() => calculateSuggestedFee('key-path')} oninvalid=${handleInvalidForm} ?skip-submit=${feeType() === 'suggested'}>
                             <fieldset class="flex flex-direction-column gap-0-5">
@@ -2068,6 +2153,33 @@
                 buttonLoader(document.getElementById('increase_fee'), false)
             }
         }
+        router.addRoute('create', state => {
+            renderElem(getRef('page_container'), html`
+                <menu id="creation_menu" class="flex gap-0-5">
+                    <li>
+                        <button class="button button--colored primary-action" onclick="openPopup('generate_key_path_address_popup')">
+                            <svg class="icon" xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 0 24 24" width="24px" fill="#000000"> <path d="M0 0h24v24H0V0z" fill="none" /> <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm5 11h-4v4h-2v-4H7v-2h4V7h2v4h4v2z" /> </svg>
+                            <h4> Create key-path address </h4>
+                            <p> Generates a Taproot address and private key pair </p>
+                        </button>
+                    </li>
+                    <li>
+                        <button class="button button--colored primary-action" onclick="openPopup('generate_script_path_address_popup')">
+                            <svg class="icon" xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 0 24 24" width="24px" fill="#000000"> <path d="M0 0h24v24H0V0z" fill="none" /> <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm5 11h-4v4h-2v-4H7v-2h4V7h2v4h4v2z" /> </svg>
+                            <h4> Create script-path address </h4>
+                            <p> Generates a Taproot address with given member scripts </p>
+                        </button>
+                    </li>
+                    <li>
+                        <button class="button button--colored primary-action" onclick="openPopup('convert_to_taproot_popup')">
+                            <svg class="icon" xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 0 24 24" width="24px" fill="#000000"> <path d="M0 0h24v24H0V0z" fill="none" /> <path d="M6.99 11L3 15l3.99 4v-3H14v-2H6.99v-3zM21 9l-3.99-4v3H10v2h7.01v3L21 9z" /> </svg>
+                            <h4>Retrieve Taproot address</h4>
+                            <p>Get Taproot address corresponding to given BTC private key</p>
+                        </button>
+                    </li>
+                </menu>
+            `)
+        })
     </script>
     <script type="text/javascript">
         const DUST_AMT = 546,
@@ -2322,73 +2434,8 @@
             })
         }
     </script>
-
-    <script>
-        keyPairFromSecret = (hexSecretKey) => {
-            const secretKey = hex.decode(hexSecretKey);
-            const schnorrPublicKey = secp256k1_schnorr.getPublicKey(secretKey);
-            return {
-                schnorrPublicKey,
-                secretKey,
-            };
-        };
-        // generate new private key
-        internalKeyPair = keyPairFromSecret(
-            '1229101a0fcf2104e8808dab35661134aa5903867d44deb73ce1c7e4eb925be8'
-        );
-
-        preimage = hashmini.sha256(
-            hex.decode('107661134f21fc7c02223d50ab9eb3600bc3ffc3712423a1e47bb1f9a9dbf55f')
-        );
-
-        aliceKeyPair = keyPairFromSecret(
-            '2bd806c97f0e00af1a1fc3328fa763a9269723c8db8fac4f93af71db186d6e90'
-        );
-
-        bobKeyPair = keyPairFromSecret(
-            '81b637d8fcd2c6da6359e6963113a1170de795e4b725b84d1e0b4cfd9ec58ce9'
-        );
-
-        scriptAlice = new Uint8Array([
-            0x02,
-            144,
-            0x00,
-            btc.OP.CHECKSEQUENCEVERIFY,
-            btc.OP.DROP,
-            0x20,
-            ...aliceKeyPair.schnorrPublicKey,
-            0xac,
-        ]);
-
-        scriptBob = new Uint8Array([
-            btc.OP.SHA256,
-            0x20,
-            ...preimage,
-            btc.OP.EQUALVERIFY,
-            0x20,
-            ...bobKeyPair.schnorrPublicKey,
-            0xac,
-        ]);
-
-        taprootTree = btc.taprootListToTree([
-            {
-                script: scriptAlice,
-                leafVersion: 0xc0,
-            },
-            {
-                script: scriptBob,
-                leafVersion: 0xc0,
-            },
-        ]);
-
-
-        taprootCommitment = btc.p2tr(
-            internalKeyPair.schnorrPublicKey,
-            taprootTree,
-            undefined,
-            true
-        );
-    </script>
+    <!-- 029000b275209997a497d964fc1a62885b05a51166a65a90df00492c8d7cf61d6accf54803beac -->
+    <!-- a8206c60f404f8167a38fc70eaf8aa17ac351023bef86bcb9d1086a19afe95bd533388204edfcf9dfe6c0b5c83d1ab3f78d1b39a46ebac6798e08e19761f5ed89ec83c10ac -->
 </body>
 
 </html>

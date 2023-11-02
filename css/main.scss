@@ -983,16 +983,40 @@ body.loaded .nav-item {
   border-radius: 0.5rem;
   border: solid thin rgba(var(--text-color), 0.3);
 }
-
+#creation_menu {
+  display: grid;
+  grid-area: 0.5rem;
+  grid-template-columns: repeat(auto-fill, minmax(18rem, 1fr));
+}
 .primary-action {
-  padding: 0.6rem 0.8rem 0.6rem 0.6rem;
-  gap: 0.5rem;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: flex-start;
+  padding: max(1rem, 1.5vw);
+  gap: 0.5rem 1rem;
   white-space: normal;
-  font-size: 0.9rem;
   border-radius: 0.5rem;
   background-color: transparent;
   border: thin solid rgba(var(--accent-color-rgb), 0.2);
   text-align: start;
+  width: 100%;
+  height: 100%;
+  .icon {
+    height: 1.5rem;
+    width: 1.5rem;
+    margin-bottom: 1rem;
+    grid-row: 1/3;
+  }
+  h4 {
+    grid-column: 2;
+    font-size: 1rem;
+  }
+  p {
+    grid-column: 2;
+    font-weight: 400;
+    color: rgba(var(--text-color), 0.8);
+    margin-bottom: auto;
+  }
 }
 #flo_id_warning {
   padding-bottom: 1.5rem;
@@ -1196,7 +1220,7 @@ body.loaded .nav-item {
     &:not(.nav-hidden) {
       grid-template-columns: auto 1fr;
       grid-template-rows: auto 1fr;
-      grid-template-areas: "nav header" "nav .";
+      grid-template-areas: "header header" "nav .";
     }
     position: relative;
     overflow: hidden;
@@ -1205,12 +1229,18 @@ body.loaded .nav-item {
   }
   #main_header {
     grid-area: header;
+    border-bottom: solid thin rgba(var(--text-color), 0.2);
+    padding: 0.8rem 1rem;
+    .app-brand {
+      gap: 0.5rem;
+    }
   }
   #main_navbar {
     grid-area: nav;
     border-top: none;
     flex-direction: column;
-    background-color: rgba(37 110 255/ 0.03);
+    background-color: transparent;
+    border-right: solid thin rgba(var(--text-color), 0.2);
     ul {
       flex-direction: column;
       gap: 0.5rem;
@@ -1221,17 +1251,13 @@ body.loaded .nav-item {
     flex-direction: row;
     justify-content: flex-start;
     padding: 0.8rem 1rem 0.8rem 0.5rem;
+    min-width: 10rem;
     &__indicator {
       width: 0.25rem;
       height: 50%;
       left: 0;
       border-radius: 0 1rem 1rem 0;
       bottom: auto;
-    }
-  }
-  body[data-theme="dark"] {
-    #main_navbar {
-      background-color: rgba(0 0 0/ 0.2);
     }
   }
   #transactions_list {
@@ -1245,7 +1271,7 @@ body.loaded .nav-item {
   #increase_fee_popup {
     --width: 30rem;
   }
-  #generate_address_popup,
+  #generate_key_path_address_popup,
   #convert_to_taproot_popup {
     --width: min(36rem, 100%);
   }
@@ -1269,6 +1295,9 @@ body.loaded .nav-item {
   #key_conversion_content {
     grid-template-columns: 1fr 1fr;
     align-items: flex-start;
+  }
+  #generate_script_path_address_popup {
+    --width: 36rem;
   }
 }
 @media only screen and (min-width: 1280px) {
