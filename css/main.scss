@@ -895,7 +895,7 @@ body.loaded .nav-item {
   }
 }
 .tx-participant {
-  &:not(:last-of-type) {
+  &:not(:last-child) {
     &::after {
       content: ",";
     }

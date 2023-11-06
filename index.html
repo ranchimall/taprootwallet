@@ -1023,7 +1023,12 @@
                 let icon
                 const transactingAddresses = (receiver || sender || [])
                 const transactingAddressesLinks = transactingAddresses
-                    .slice(0, 2).map(address => html`<a href="${`#/search?query=${address}`}" class="tx-participant wrap-around">${address}</a>`)
+                    .slice(0, 2).map(address => {
+                        if (address !== 'undefined')
+                            return html`<a href="${`#/search?query=${address}`}" class="tx-participant wrap-around">${address}</a>`
+                        else
+                            return html`<span class="tx-participant wrap-around">Unknown</span>`
+                    })
                 // block = null
                 if (type === 'out') {
                     transactionReceiver = html`Sent to ${transactingAddressesLinks}`;
@@ -1215,9 +1220,13 @@
                                 <ul>
                                     ${outputs.map(output => html`
                                         <li class="in-out-card">
-                                            <sm-copy value=${output.address}>
-                                                <a href="${`#/search?query=${output.address}`}" class="output-address wrap-around">${output.address}</a>
-                                            </sm-copy>
+                                            ${output.address ? html`
+                                                <sm-copy value=${output.address}>
+                                                    <a href="${`#/search?query=${output.address}`}" class="output-address wrap-around">${output.address}</a>
+                                                </sm-copy>
+                                            `: html`
+                                                <div class="output-address">Unknown</div>
+                                            `}
                                             <div class="output-value amount-shown" data-btc-amount="${output.value}">${getConvertedAmount(output.value, true)}</div>
                                         </li>
                                     `)}
@@ -2055,11 +2064,11 @@
             const txid = button.closest('li').dataset.txid
             changingFeeOf = txid
             try {
-                const tx = await btcOperator.tx_fetch_for_editing(txid)
-                const isScriptPath = tx.witness.length > 1;
-                const { inputs, outputs, fee: previousFee } = await btcOperator.parseTransaction(tx)
-                let senders = []
-                senders = inputs.map(input => input.address)
+                const { tx, rawTx } = await getTaprootTx(txid)
+                const finalScriptWitness = tx.inputs[0].finalScriptWitness
+                const isScriptPath = finalScriptWitness && finalScriptWitness.length > 1;
+                const { inputs, outputs, fee: previousFee } = parseTransaction(rawTx)
+                let senders = inputs.map(input => input.address)
                 const receivers = outputs.map(output => output.address)
                 const uniqueReceivers = outputs.reduce((acc, { address, value }) => {
                     if (acc[address]) {
@@ -2070,7 +2079,55 @@
                     return acc
                 }, {})
                 if (isScriptPath) {
-
+                    const script = finalScriptWitness[finalScriptWitness.length - 2]
+                    console.log(finalScriptWitness)
+                    const requiresSignature = btc.Script.decode(script).some(op => op === 'CHECKSIG');
+                    const requiredSolutions = requiresSignature ? finalScriptWitness.length - 3 : finalScriptWitness.length - 2;
+                    const renderSolutionInput = (index) => html`
+                        <sm-input class="solution-input flex-1" placeholder=${`Solution #${index + 1} (Hex)`} pattern="^[0-9A-Fa-f]+$" error-text="Only hexadecimal values are allowed" animate required></sm-input>
+                    `
+                    renderElem(getRef('increase_fee_popup_content'), html`
+                        <sm-form style="--gap: 2rem">
+                            ${requiredSolutions > 0 ? html`
+                                <div class="grid gap-0-5">
+                                    <h4>Enter solutions</h4>
+                                    ${[...Array(requiredSolutions)].map((_, index) => renderSolutionInput(index))}
+                                </div>
+                            ` : ''}
+                            ${requiresSignature ? html`
+                                <div class="grid gap-0-5">
+                                    <h4>Transaction requires signature as a solution</h4>
+                                    <sm-input id="signer_input" placeholder="Signer's private key" data-private-key class="password-field" type="password" animate required>
+                                        <svg class="icon" slot="icon" xmlns="http://www.w3.org/2000/svg" enable-background="new 0 0 24 24" height="24px" viewBox="0 0 24 24" width="24px" fill="#000000"> <g> <rect fill="none" height="24" width="24"></rect> </g> <g> <path d="M21,10h-8.35C11.83,7.67,9.61,6,7,6c-3.31,0-6,2.69-6,6s2.69,6,6,6c2.61,0,4.83-1.67,5.65-4H13l2,2l2-2l2,2l4-4.04L21,10z M7,15c-1.65,0-3-1.35-3-3c0-1.65,1.35-3,3-3s3,1.35,3,3C10,13.65,8.65,15,7,15z"> </path> </g> </svg>
+                                        <label slot="right" class="interact">
+                                            <input type="checkbox" class="hidden" autocomplete="off" readonly="" onchange="togglePrivateKeyVisibility(this)">
+                                            <svg class="icon invisible" xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 0 24 24" width="24px" fill="#000000"> <title>Hide password</title> <path d="M0 0h24v24H0zm0 0h24v24H0zm0 0h24v24H0zm0 0h24v24H0z" fill="none"></path> <path d="M12 7c2.76 0 5 2.24 5 5 0 .65-.13 1.26-.36 1.83l2.92 2.92c1.51-1.26 2.7-2.89 3.43-4.75-1.73-4.39-6-7.5-11-7.5-1.4 0-2.74.25-3.98.7l2.16 2.16C10.74 7.13 11.35 7 12 7zM2 4.27l2.28 2.28.46.46C3.08 8.3 1.78 10.02 1 12c1.73 4.39 6 7.5 11 7.5 1.55 0 3.03-.3 4.38-.84l.42.42L19.73 22 21 20.73 3.27 3 2 4.27zM7.53 9.8l1.55 1.55c-.05.21-.08.43-.08.65 0 1.66 1.34 3 3 3 .22 0 .44-.03.65-.08l1.55 1.55c-.67.33-1.41.53-2.2.53-2.76 0-5-2.24-5-5 0-.79.2-1.53.53-2.2zm4.31-.78l3.15 3.15.02-.16c0-1.66-1.34-3-3-3l-.17.01z"> </path> </svg>
+                                            <svg class="icon visible" xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 0 24 24" width="24px" fill="#000000"> <title>Show password</title> <path d="M0 0h24v24H0z" fill="none"></path> <path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"> </path> </svg>
+                                        </label>
+                                    </sm-input>
+                                </div>
+                                <div class="grid gap-0-5">
+                                    ${finalScriptWitness.length > 3 ? html`
+                                        <sm-input id="signature_place_input" placeholder="Position of signature. (1, 2, ...)" type="number" min="1" max=${requiredSolutions + 1} error-text=${`Value must be between 1 and ${requiredSolutions + 1}`} animate required></sm-input>
+                                    ` : html`
+                                        <sm-input id="signature_place_input" placeholder="Position of signature" type="number" value="1" readonly animate required></sm-input>
+                                    `}
+                                    <p>*The generated signature will be used as one of the solutions.</p>
+                                </div>
+                            ` : ''}
+                            <div class="grid gap-0-5">
+                                <p>
+                                    Previous fee: <b>${getConvertedAmount(previousFee, true)}</b>
+                                </p>
+                                <sm-input id="new_fee" placeholder="New fee" type="number" min=${getConvertedAmount(previousFee)} step="0.00000001" error-text=${`New fee should be greater than ${getConvertedAmount(previousFee, true)}`} animate required>
+                                    <div class="currency-symbol flex" slot="icon"> </div>
+                                </sm-input>
+                            </div>
+                            <div class="multi-state-button">
+                                <button id="increase_fee" class="button button--primary" onclick=${increaseFee} type="submit" disabled>Increase fee</button>
+                            </div>
+                        </sm-form>
+                    `)
                 } else {
                     renderElem(getRef('increase_fee_popup_content'), html`
                         <sm-form style="--gap: 2rem">
@@ -2117,7 +2174,7 @@
                                 </sm-input>
                             </div>
                             <div class="multi-state-button">
-                                <button id="increase_fee" class="button button--primary" onclick=${increaseFee} type="submit">Increase fee</button>
+                                <button id="increase_fee" class="button button--primary" onclick=${increaseFee} type="submit" disabled>Increase fee</button>
                             </div>
                         </sm-form>
                     `)
@@ -2146,7 +2203,7 @@
             console.log(changingFeeOf, newFee, privateKeys)
             try {
                 let signedTxHex = await taprootEditFee({
-                    tx_hex: changingFeeOf,
+                    txId: changingFeeOf,
                     new_fee: newFee,
                     private_keys: privateKeys
                 })
@@ -2287,10 +2344,7 @@
                     const amountInSat = btcOperator.util.BTC_to_Sat(totalAmount)
                     const [senderBalance, feeRate] = await Promise.all([btcOperator.getBalance(address), btcOperator.getFeeRate()]);
                     let calculatedFee = 0;
-                    const { input_size, consumedUtxos = [
-                        { txid: 'c061c23190ed3370ad5206769651eaf6fac6d87d85b5db34e30a74e0c4a6da3e', index: 0, script: tr.script, amount: 550n },
-                        { txid: 'a034026190ed2280ad41069546513af6fac6d87d85b5db34e30a74e0c4a78678', index: 1, script: tr.script, amount: 375n }
-                    ] } = await addUTXOs(tx, tr, [address], btcOperator.util.BTC_to_Sat(totalAmount), feeRate)
+                    const { input_size, consumedUtxos } = await addUTXOs(tx, tr, [address], btcOperator.util.BTC_to_Sat(totalAmount), feeRate)
                     calculatedFee += input_size
                     // add receivers
                     receivers.forEach((receiver, i) => {
@@ -2302,11 +2356,6 @@
                     fee = fee || calculatedFee; // if fee is not provided, pass calculated fee
                     // add change address
                     const changeAmount = senderBalance - (totalAmount + fee)
-                    // if (changeAmount < 0)
-                    //     return resolve({
-                    //         txHex: null,
-                    //         fee: calculatedFee
-                    //     })
                     tx.addOutputAddress(address, BigInt(btcOperator.util.BTC_to_Sat(changeAmount)));
                     if (isTaprootScriptPath) {
                         tx.inputs.forEach((input, index) => {
@@ -2401,74 +2450,109 @@
                 }).catch(error => reject(error))
             });
         }
+        const parseTransaction = function (tx) {
+            const { inputs, out } = tx;
+            let result = {};
+            //Parse Inputs
+            result.inputs = inputs.map(input => {
+                const { prev_out: { addr, value } } = input;
+                return {
+                    address: addr,
+                    value: btcOperator.util.Sat_to_BTC(value)
+                }
+            });
+            //Parse Outputs
+            result.outputs = tx.out.map((out) => {
+                return {
+                    address: out.addr,
+                    value: btcOperator.util.Sat_to_BTC(out.value)
+                }
+            });
+            //Parse Totals
+            result.total_input = parseFloat(result.inputs.reduce((a, inp) => a += inp.value, 0).toFixed(8));
+            result.total_output = parseFloat(result.outputs.reduce((a, out) => a += out.value, 0).toFixed(8));
+            result.fee = parseFloat((result.total_input - result.total_output).toFixed(8));
+            return result;
+        }
+        function getTaprootTx(txId) {
+            return new Promise((resolve, reject) => {
+                Promise.all([btcOperator.fetch(`rawtx/${txId}`), btcOperator.getTx.hex(txId)])
+                    .then(([rawTx, txHex]) => {
+                        const tx = taproot.Transaction.fromRaw(hex.decode(txHex));
+                        resolve({
+                            tx,
+                            rawTx
+                        });
+                    }).catch(error => reject(error))
+            })
+        }
 
-        const taprootEditFee = function ({ tx_hex, new_fee, private_keys, change_only = true }) {
+        const taprootEditFee = function ({ txId, new_fee, private_keys, change_only = true }) {
             return new Promise((resolve, reject) => {
                 if (!Array.isArray(private_keys))
                     private_keys = [private_keys];
-                btcOperator.tx_fetch_for_editing(tx_hex).then(tx => {
-                    const isScriptPath = tx.witness.length > 1
-                    btcOperator.parseTransaction(tx).then(tx_parsed => {
-                        if (tx_parsed.fee >= new_fee)
-                            return reject("Fees can only be increased");
+                getTaprootTx(txId).then(({ tx, rawTx }) => {
+                    const isScriptPath = tx.inputs[0].finalScriptWitness && tx.inputs[0].finalScriptWitness.length > 1;
+                    const parsedTx = parseTransaction(rawTx)
+                    if (parsedTx.fee >= new_fee)
+                        return reject("Fees can only be increased");
 
-                        //editable addresses in output values (for fee increase)
-                        var edit_output_address = new Set();
-                        if (change_only === true) //allow only change values (ie, sender address) to be edited to inc fee
-                            tx_parsed.inputs.forEach(inp => edit_output_address.add(inp.address));
-                        else if (change_only === false) //allow all output values to be edited
-                            tx_parsed.outputs.forEach(out => edit_output_address.add(out.address));
-                        else if (typeof change_only == 'string') // allow only given receiver id output to be edited
-                            edit_output_address.add(change_only);
-                        else if (Array.isArray(change_only))    //allow only given set of receiver id outputs to be edited
-                            change_only.forEach(id => edit_output_address.add(id));
+                    //editable addresses in output values (for fee increase)
+                    parsedTx edit_output_address = new Set();
+                    if (change_only === true) //allow only change values (ie, sender address) to be edited to inc fee
+                        parsedTx.inputs.forEach(inp => edit_output_address.add(inp.address));
+                    else if (change_only === false) //allow all output values to be edited
+                        parsedTx.outputs.forEach(out => edit_output_address.add(out.address));
+                    else if (typeof change_only == 'string') // allow only given receiver id output to be edited
+                        edit_output_address.add(change_only);
+                    else if (Array.isArray(change_only))    //allow only given set of receiver id outputs to be edited
+                        change_only.forEach(id => edit_output_address.add(id));
 
-                        //edit output values to increase fee
-                        let inc_fee = btcOperator.util.BTC_to_Sat(new_fee - tx_parsed.fee);
-                        if (inc_fee < MIN_FEE_UPDATE)
-                            return reject(`Insufficient additional fee. Minimum increment: ${MIN_FEE_UPDATE}`);
-                        for (let i = tx.outs.length - 1; i >= 0 && inc_fee > 0; i--)   //reduce in reverse order
-                            if (edit_output_address.has(tx_parsed.outputs[i].address)) {
-                                let current_value = tx.outs[i].value;
-                                if (current_value instanceof BigInteger)    //convert BigInteger class to inv value
-                                    current_value = current_value.intValue();
-                                //edit the value as required
-                                if (current_value > inc_fee) {
-                                    tx.outs[i].value = current_value - inc_fee;
-                                    inc_fee = 0;
-                                } else {
-                                    inc_fee -= current_value;
-                                    tx.outs[i].value = 0;
-                                }
+                    //edit output values to increase fee
+                    let inc_fee = btcOperator.util.BTC_to_Sat(new_fee - parsedTx.fee);
+                    if (inc_fee < MIN_FEE_UPDATE)
+                        return reject(`Insufficient additional fee. Minimum increment: ${MIN_FEE_UPDATE}`);
+                    for (let i = tx.outs.length - 1; i >= 0 && inc_fee > 0; i--)   //reduce in reverse order
+                        if (edit_output_address.has(parsedTx.outputs[i].address)) {
+                            let current_value = tx.outs[i].value;
+                            if (current_value instanceof BigInteger)    //convert BigInteger class to inv value
+                                current_value = current_value.intValue();
+                            //edit the value as required
+                            if (current_value > inc_fee) {
+                                tx.outs[i].value = current_value - inc_fee;
+                                inc_fee = 0;
+                            } else {
+                                inc_fee -= current_value;
+                                tx.outs[i].value = 0;
                             }
-                        if (inc_fee > 0) {
-                            let max_possible_fee = btcOperator.util.BTC_to_Sat(new_fee) - inc_fee; //in satoshi
-                            return reject(`Insufficient output values to increase fee. Maximum fee possible: ${btcOperator.util.Sat_to_BTC(max_possible_fee)}`);
                         }
-                        tx.outs = tx.outs.filter(o => o.value >= DUST_AMT); //remove all output with value less than DUST amount
-                        if (isScriptPath) {
+                    if (inc_fee > 0) {
+                        let max_possible_fee = btcOperator.util.BTC_to_Sat(new_fee) - inc_fee; //in satoshi
+                        return reject(`Insufficient output values to increase fee. Maximum fee possible: ${btcOperator.util.Sat_to_BTC(max_possible_fee)}`);
+                    }
+                    tx.outs = tx.outs.filter(o => o.value >= DUST_AMT); //remove all output with value less than DUST amount
+                    if (isScriptPath) {
 
-                        } else {
-                            //remove existing signatures and reset the scripts
-                            let wif_keys = [];
-                            for (let i in tx.ins) {
-                                var addr = tx_parsed.inputs[i].address;
-                                //find the correct key for addr
-                                var privKey = private_keys.find(pk => btcOperator.verifyKey(addr, pk));
-                                if (!privKey)
-                                    return reject(`Private key missing for ${addr}`);
-                            }
-                            tx.witness = false; //remove all witness signatures
-                            console.debug("Unsigned:", tx.serialize());
-                            //re-sign the transaction
-                            new Set(wif_keys).forEach(key => {
-                                const privKey = coinjs.wif2privkey(key).privkey;
-                                const privKey_arrayForm = hex.decode(privKey);
-                                tx.sign(privKey_arrayForm, undefined, new Uint8Array(32));
-                            }); //Sign the tx using private key WIF
+                    } else {
+                        //remove existing signatures and reset the scripts
+                        let wif_keys = [];
+                        for (let i in tx.ins) {
+                            const addr = parsedTx.inputs[i].address;
+                            //find the correct key for addr
+                            const privKey = private_keys.find(pk => btcOperator.verifyKey(addr, pk));
+                            if (!privKey)
+                                return reject(`Private key missing for ${addr}`);
                         }
-                        resolve(tx.serialize());
-                    }).catch(error => reject(error))
+                        tx.witness = false; //remove all witness signatures
+                        //re-sign the transaction
+                        new Set(wif_keys).forEach(key => {
+                            const privKey = coinjs.wif2privkey(key).privkey;
+                            const privKey_arrayForm = hex.decode(privKey);
+                            tx.sign(privKey_arrayForm, undefined, new Uint8Array(32));
+                        }); //Sign the tx using private key WIF
+                        tx.finalize()
+                    }
+                    resolve(tx.hex);
                 }).catch(error => reject(error))
             })
         }

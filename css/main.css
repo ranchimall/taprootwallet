@@ -957,10 +957,10 @@ body.loaded .nav-item__indicator {
   font-size: 0.9rem;
 }
 
-.tx-participant:not(:last-of-type) {
+.tx-participant:not(:last-child) {
   margin-right: 0.5rem;
 }
-.tx-participant:not(:last-of-type)::after {
+.tx-participant:not(:last-child)::after {
   content: ",";
 }
 
