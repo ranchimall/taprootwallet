@@ -745,9 +745,7 @@
                     let hash = currentSubscriber.toString();
                     if (Crypto)
                         hash = Crypto.SHA1(currentSubscriber.toString())
-                    if (!subscribers.has(hash)) {
-                        subscribers.set(hash, currentSubscriber);
-                    }
+                    subscribers.set(hash, currentSubscriber);
                 }
                 return value;
             }
@@ -755,9 +753,7 @@
             function setter(newValue) {
                 if (newValue === value) return;
                 value = newValue;
-                subscribers.forEach((subscriber, hash) => {
-                    subscriber();
-                });
+                subscribers.forEach((subscriber) => subscriber());
             }
             return [getter, setter];
         }
@@ -1333,9 +1329,10 @@
         const [suggestedFeeStatus, setSuggestedFeeStatus] = $signal(['idle'])
         const [feeType, setFeeType] = $signal('suggested')
         const [atTaprootStep, setAtTaprootStep] = $signal(1);
-        const [isScriptMode, setIsScriptMode] = $signal(false);
+        const [spendingType, setSpendingType] = $signal('key-path');
         router.addRoute('send', (state) => {
-            $effect(() => {
+            const [isSignRequired, setIsSignRequired] = $signal(false)
+            const renderSendPage = () => {
                 let feeSection = ''
                 if (feeType() === 'suggested') {
                     const [status, message] = suggestedFeeStatus()
@@ -1357,11 +1354,11 @@
                     `
                 }
                 let form = '';
-                if (isScriptMode()) {
+                if (spendingType() === 'script-path') {
                     switch (atTaprootStep()) {
                         case 1:
                             form = html`
-                                <sm-form id="sender_receiver_form">
+                                <sm-form id="script_tx_step_1_form">
                                     <fieldset class="flex flex-direction-column gap-1">
                                         <div class="flex flex-direction-column gap-0-5">
                                             <div class="flex space-between align-center">
@@ -1393,10 +1390,24 @@
                                     <fieldset class="flex flex-direction-column gap-1">
                                         <sm-input id="script_input" placeholder="Script (hex)" pattern="^[0-9A-Fa-f]+$" error-text="Only hexadecimal values are allowed" animate required></sm-input>
                                         <sm-input id="control_block_input" placeholder="Control block (hex)" pattern="^[0-9A-Fa-f]+$" error-text="Only hexadecimal values are allowed" animate required></sm-input>
-                                        <sm-input id="solutions_input" placeholder="No. of solutions" type="number" min="1" animate required></sm-input>
-                                        <sm-checkbox id="sign_transaction_checkbox">
-                                            <p style="margin-left: 0.5rem;">I want to sign the transaction</p>
+                                        <sm-input id="solutions_input" placeholder="Number of solutions" type="number" min="1" animate required></sm-input>
+                                        <sm-checkbox id="sign_transaction_checkbox" onchange=${e => setIsSignRequired(e.target.checked)} ?checked=${isSignRequired()}>
+                                            <p style="margin-left: 0.5rem;">Signature is one of the solutions</p>
                                         </sm-checkbox>
+                                        ${isSignRequired(renderSendPage) ? html`
+                                            <sm-input id="signer_input" placeholder="Signer's private key" data-private-key class="password-field" type="password" animate required>
+                                                <svg class="icon" slot="icon" xmlns="http://www.w3.org/2000/svg" enable-background="new 0 0 24 24" height="24px" viewBox="0 0 24 24" width="24px" fill="#000000"> <g> <rect fill="none" height="24" width="24"></rect> </g> <g> <path d="M21,10h-8.35C11.83,7.67,9.61,6,7,6c-3.31,0-6,2.69-6,6s2.69,6,6,6c2.61,0,4.83-1.67,5.65-4H13l2,2l2-2l2,2l4-4.04L21,10z M7,15c-1.65,0-3-1.35-3-3c0-1.65,1.35-3,3-3s3,1.35,3,3C10,13.65,8.65,15,7,15z"> </path> </g> </svg>
+                                                <label slot="right" class="interact">
+                                                    <input type="checkbox" class="hidden" autocomplete="off" readonly="" onchange="togglePrivateKeyVisibility(this)">
+                                                    <svg class="icon invisible" xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 0 24 24" width="24px" fill="#000000"> <title>Hide password</title> <path d="M0 0h24v24H0zm0 0h24v24H0zm0 0h24v24H0zm0 0h24v24H0z" fill="none"></path> <path d="M12 7c2.76 0 5 2.24 5 5 0 .65-.13 1.26-.36 1.83l2.92 2.92c1.51-1.26 2.7-2.89 3.43-4.75-1.73-4.39-6-7.5-11-7.5-1.4 0-2.74.25-3.98.7l2.16 2.16C10.74 7.13 11.35 7 12 7zM2 4.27l2.28 2.28.46.46C3.08 8.3 1.78 10.02 1 12c1.73 4.39 6 7.5 11 7.5 1.55 0 3.03-.3 4.38-.84l.42.42L19.73 22 21 20.73 3.27 3 2 4.27zM7.53 9.8l1.55 1.55c-.05.21-.08.43-.08.65 0 1.66 1.34 3 3 3 .22 0 .44-.03.65-.08l1.55 1.55c-.67.33-1.41.53-2.2.53-2.76 0-5-2.24-5-5 0-.79.2-1.53.53-2.2zm4.31-.78l3.15 3.15.02-.16c0-1.66-1.34-3-3-3l-.17.01z"> </path> </svg>
+                                                    <svg class="icon visible" xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 0 24 24" width="24px" fill="#000000"> <title>Show password</title> <path d="M0 0h24v24H0z" fill="none"></path> <path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"> </path> </svg>
+                                                </label>
+                                            </sm-input>
+                                            <div class="grid gap-0-5">
+                                                <sm-input id="signature_place_input" placeholder="Position of signature. (1, 2, ...)" type="number" min="1" animate required></sm-input>
+                                                <p>*The generated signature will be used as one of the solutions.</p>
+                                            </div>
+                                        `: ''}
                                         <button class="button button--primary" type="submit" disabled onclick=${() => proceedTo(2)}>Proceed</button>
                                     </fieldset>
                                 </sm-form>
@@ -1404,22 +1415,12 @@
                             break;
                         case 2:
                             form = html`
-                                <sm-form id="script_details_form" style="max-width: 36rem">
+                                <sm-form id="script_tx_step_2_form" style="max-width: 36rem">
                                     <div class="flex flex-direction-column gap-1">
-                                        ${[...Array(taprootScriptTxDetails.solutions || 0).keys()].map(index => html`
+                                        ${[...Array(taprootScriptTxDetails.noOfSolutions || 0).keys()].map(index => html`
                                             <sm-input class="solution-input" placeholder=${`Solution ${index + 1} (hex)`} pattern="^[0-9A-Fa-f]+$" error-text="Only hexadecimal values are allowed" animate required></sm-input>
                                         `)} 
                                     </div>
-                                    ${taprootScriptTxDetails.signTransaction ? html`
-                                        <sm-input id="signer_input" placeholder="Signer's private key" data-private-key class="password-field" type="password" animate required>
-                                            <svg class="icon" slot="icon" xmlns="http://www.w3.org/2000/svg" enable-background="new 0 0 24 24" height="24px" viewBox="0 0 24 24" width="24px" fill="#000000"> <g> <rect fill="none" height="24" width="24"></rect> </g> <g> <path d="M21,10h-8.35C11.83,7.67,9.61,6,7,6c-3.31,0-6,2.69-6,6s2.69,6,6,6c2.61,0,4.83-1.67,5.65-4H13l2,2l2-2l2,2l4-4.04L21,10z M7,15c-1.65,0-3-1.35-3-3c0-1.65,1.35-3,3-3s3,1.35,3,3C10,13.65,8.65,15,7,15z"> </path> </g> </svg>
-                                            <label slot="right" class="interact">
-                                                <input type="checkbox" class="hidden" autocomplete="off" readonly="" onchange="togglePrivateKeyVisibility(this)">
-                                                <svg class="icon invisible" xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 0 24 24" width="24px" fill="#000000"> <title>Hide password</title> <path d="M0 0h24v24H0zm0 0h24v24H0zm0 0h24v24H0zm0 0h24v24H0z" fill="none"></path> <path d="M12 7c2.76 0 5 2.24 5 5 0 .65-.13 1.26-.36 1.83l2.92 2.92c1.51-1.26 2.7-2.89 3.43-4.75-1.73-4.39-6-7.5-11-7.5-1.4 0-2.74.25-3.98.7l2.16 2.16C10.74 7.13 11.35 7 12 7zM2 4.27l2.28 2.28.46.46C3.08 8.3 1.78 10.02 1 12c1.73 4.39 6 7.5 11 7.5 1.55 0 3.03-.3 4.38-.84l.42.42L19.73 22 21 20.73 3.27 3 2 4.27zM7.53 9.8l1.55 1.55c-.05.21-.08.43-.08.65 0 1.66 1.34 3 3 3 .22 0 .44-.03.65-.08l1.55 1.55c-.67.33-1.41.53-2.2.53-2.76 0-5-2.24-5-5 0-.79.2-1.53.53-2.2zm4.31-.78l3.15 3.15.02-.16c0-1.66-1.34-3-3-3l-.17.01z"> </path> </svg>
-                                                <svg class="icon visible" xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 0 24 24" width="24px" fill="#000000"> <title>Show password</title> <path d="M0 0h24v24H0z" fill="none"></path> <path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"> </path> </svg>
-                                            </label>
-                                        </sm-input>
-                                    `: ''}
                                     <div class="grid gap-0-5">
                                         <div class="flex align-center space-between gap-1">
                                             <h4>Fee</h4>
@@ -1501,11 +1502,12 @@
                             <h3>
                                 Perform Transaction
                             </h3>
-                            <sm-switch style="width: fit-content" ?checked=${isScriptMode()} onchange=${e => setIsScriptMode(e.target.value)}>
-                                <p slot="left" style="margin-right: 0.5rem">Toggle script path mode</p>    
-                            </sm-switch>
+                            <sm-chips onchange=${e => setSpendingType(e.target.value)}>
+                                <sm-chip value="key-path" ?selected=${spendingType() === 'key-path'}>Key-path</sm-chip>
+                                <sm-chip value="script-path" ?selected=${spendingType() === 'script-path'}>Script-path</sm-chip>
+                            </sm-chips>
                         </div>
-                        ${isScriptMode() ? html`
+                        ${spendingType() === 'script-path' ? html`
                             <ul id="taproot_steps" class="steps">
                                 ${[1, 2].map(step => html`
                                     <li class=${`step ${atTaprootStep() === step ? 'active' : ''} ${atTaprootStep() > step ? 'done' : ''}`}></li>
@@ -1515,10 +1517,14 @@
                         ${form}
                     </div>
                 `)
-            })
+            }
+            $effect(renderSendPage)
         })
         async function calculateSuggestedFee(type = 'key-path') {
             try {
+                if (type === 'key-path') {
+                } else {
+                }
                 const submitButton = getRef('send_tx_button') || getRef('taproot_script_path_send_button')
                 submitButton.disabled = true
                 if (feeType() === 'custom') {
@@ -1552,18 +1558,27 @@
             if (!step) return
             switch (atTaprootStep()) {
                 case 1:
-                    // if (!getRef('sender_receiver_form').isFormValid) {
-                    //     notify('Please fill all the details', 'error')
-                    //     return
-                    // }
+                    if (!getRef('script_tx_step_1_form').isFormValid) {
+                        notify('Please fill all the details', 'error')
+                        return
+                    }
                     const { receiverAddresses, receiverAmounts } = getTransactionReceivers()
                     const senderAddress = getRef('taproot_sender_input').value.trim()
                     taprootScriptTxDetails = {
                         senderAddress, receiverAddresses, receiverAmounts,
                         script: getRef('script_input').value.trim(),
                         controlBlockHex: getRef('control_block_input').value.trim(),
-                        solutions: parseInt(getRef('solutions_input').value.trim()),
-                        signTransaction: getRef('sign_transaction_checkbox').checked
+                        noOfSolutions: parseInt(getRef('solutions_input').value.trim())
+                    }
+                    if (getRef('sign_transaction_checkbox').checked) {
+                        const signaturePlace = parseInt(getRef('signature_place_input').value.trim())
+                        if (signaturePlace > taprootScriptTxDetails.noOfSolutions) {
+                            notify('Signature place should be less than or equal to number of solutions', 'error')
+                            return
+                        }
+                        taprootScriptTxDetails.signaturePlace = signaturePlace
+                        taprootScriptTxDetails.signerSecretKey = hex.decode(coinjs.wif2privkey(getRef('signer_input').value.trim()).privkey)
+                        taprootScriptTxDetails.noOfSolutions--;
                     }
                     break;
                 case 2:
@@ -1578,23 +1593,9 @@
         }
         async function sendScriptPathTx() {
             try {
-                const scriptWitness = []
-                const solutions = document.querySelectorAll('.solution-input')
-                solutions.forEach(solution => {
-                    const decodedSolution = hex.decode(solution.value.trim())
-                    scriptWitness.push(decodedSolution)
-                })
-                const { senderAddress, receiverAddresses, receiverAmounts, script, controlBlockHex, signTransaction } = taprootScriptTxDetails
-                scriptWitness.push(hex.decode(script), hex.decode(controlBlockHex))
-                let signerSecretKey
-                if (signTransaction) {
-                    const signerPrivateKey = getRef('signer_input').value.trim()
-                    if (!signerPrivateKey) {
-                        notify(`Please enter the signer's private key`, 'error')
-                        return
-                    }
-                    signerSecretKey = hex.decode(signerPrivateKey)
-                }
+                const providedSolutions = [...document.querySelectorAll('.solution-input')]
+                    .forEach(input => hex.decode(input.value.trim()))
+                const { senderAddress, receiverAddresses, receiverAmounts, script, controlBlockHex, signerSecretKey, signaturePlace } = taprootScriptTxDetails
                 const confirmation = await getConfirmation('Confirm transaction', {
                     message: html`
                         <div class="grid gap-1-5">
@@ -1628,10 +1629,12 @@
                     senderAddress,
                     receivers: receiverAddresses,
                     amounts: receiverAmounts,
-                    scriptWitness,
                     signerSecretKey,
+                    providedSolutions,
                     userScript: hex.decode(script),
-                    userControlBlock: taproot.TaprootControlBlock.decode(hex.decode(controlBlockHex))
+                    userControlBlock: hex.decode(controlBlockHex),
+                    controlBlockVersion: taproot.TaprootControlBlock.decode(hex.decode(controlBlockHex)).version,
+                    signaturePlace
                 })
                 console.log(txHex)
                 btcOperator.broadcastTx(txHex).then(txid => {
@@ -2052,9 +2055,10 @@
             const txid = button.closest('li').dataset.txid
             changingFeeOf = txid
             try {
-                const { inputs, outputs, fee: previousFee } = await btcOperator.getTx(txid)
+                const tx = await btcOperator.tx_fetch_for_editing(txid)
+                const isScriptPath = tx.witness.length > 1;
+                const { inputs, outputs, fee: previousFee } = await btcOperator.parseTransaction(tx)
                 let senders = []
-                let requiredSignatures = 0
                 senders = inputs.map(input => input.address)
                 const receivers = outputs.map(output => output.address)
                 const uniqueReceivers = outputs.reduce((acc, { address, value }) => {
@@ -2065,55 +2069,59 @@
                     }
                     return acc
                 }, {})
-                renderElem(getRef('increase_fee_popup_content'), html`
-                    <sm-form style="--gap: 2rem">
-                        <div class="grid gap-0-5">
-                            <h4>Senders</h4>
-                            <ul class="grid gap-0-5">
-                                ${[...new Set(senders)].map((address) => html.node/*html*/`<li class="increase-fee-sender grid gap-1">
-                                    <div>
-                                        <div class="label">Address</div>
-                                        <b class="sender__address wrap-around">${address}</b>
-                                    </div>
-                                    <sm-input class="sender__private-key password-field" type="password" placeholder="Private Key" animate required>
-                                        <svg class="icon" slot="icon" xmlns="http://www.w3.org/2000/svg" enable-background="new 0 0 24 24" height="24px" viewBox="0 0 24 24" width="24px" fill="#000000"> <g> <rect fill="none" height="24" width="24"></rect> </g> <g> <path d="M21,10h-8.35C11.83,7.67,9.61,6,7,6c-3.31,0-6,2.69-6,6s2.69,6,6,6c2.61,0,4.83-1.67,5.65-4H13l2,2l2-2l2,2l4-4.04L21,10z M7,15c-1.65,0-3-1.35-3-3c0-1.65,1.35-3,3-3s3,1.35,3,3C10,13.65,8.65,15,7,15z"></path> </g> </svg>
-                                        <label slot="right" class="interact">
-                                            <input type="checkbox" class="hidden" autocomplete="off" readonly="" onchange="togglePrivateKeyVisibility(this)">
-                                            <svg class="icon invisible" xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 0 24 24" width="24px" fill="#000000"> <title>Hide password</title> <path d="M0 0h24v24H0zm0 0h24v24H0zm0 0h24v24H0zm0 0h24v24H0z" fill="none"></path> <path d="M12 7c2.76 0 5 2.24 5 5 0 .65-.13 1.26-.36 1.83l2.92 2.92c1.51-1.26 2.7-2.89 3.43-4.75-1.73-4.39-6-7.5-11-7.5-1.4 0-2.74.25-3.98.7l2.16 2.16C10.74 7.13 11.35 7 12 7zM2 4.27l2.28 2.28.46.46C3.08 8.3 1.78 10.02 1 12c1.73 4.39 6 7.5 11 7.5 1.55 0 3.03-.3 4.38-.84l.42.42L19.73 22 21 20.73 3.27 3 2 4.27zM7.53 9.8l1.55 1.55c-.05.21-.08.43-.08.65 0 1.66 1.34 3 3 3 .22 0 .44-.03.65-.08l1.55 1.55c-.67.33-1.41.53-2.2.53-2.76 0-5-2.24-5-5 0-.79.2-1.53.53-2.2zm4.31-.78l3.15 3.15.02-.16c0-1.66-1.34-3-3-3l-.17.01z"></path> </svg>
-                                            <svg class="icon visible" xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 0 24 24" width="24px" fill="#000000"> <title>Show password</title> <path d="M0 0h24v24H0z" fill="none"></path> <path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"></path> </svg>
-                                        </label>
-                                    </sm-input>
-                                </li>`)}
-                            </ul>
-                        </div>
-                        <div class="grid gap-0-5">
-                            <h4>Receivers</h4>
-                            <ul class="grid gap-0-5">
-                                ${Object.entries(uniqueReceivers).map(([address, value]) => html.node/*html*/`<li class="increase-fee-receiver grid gap-1">
-                                    <div>
-                                        <div class="label">Address</div>
-                                        <b class="wrap-around">${address}</b>
-                                    </div>
-                                    <div>
-                                        <div class="label">Amount</div>
-                                        <b>${getConvertedAmount(value, true)}</b>
-                                    </div>
-                                </li>`)}
-                            </ul>
-                        </div>
-                        <div class="grid gap-0-5">
-                            <p>
-                                Previous fee: <b>${getConvertedAmount(previousFee, true)}</b>
-                            </p>
-                            <sm-input id="new_fee" placeholder="New fee" type="number" min=${getConvertedAmount(previousFee)} step="0.00000001" error-text=${`New fee should be greater than ${getConvertedAmount(previousFee, true)}`} animate required>
-                                <div class="currency-symbol flex" slot="icon"> </div>
-                            </sm-input>
-                        </div>
-                        <div class="multi-state-button">
-                            <button id="increase_fee" class="button button--primary" onclick=${increaseFee} type="submit">Increase fee</button>
-                        </div>
-                    </sm-form>
-                `)
+                if (isScriptPath) {
+
+                } else {
+                    renderElem(getRef('increase_fee_popup_content'), html`
+                        <sm-form style="--gap: 2rem">
+                            <div class="grid gap-0-5">
+                                <h4>Senders</h4>
+                                <ul class="grid gap-0-5">
+                                    ${[...new Set(senders)].map((address) => html.node/*html*/`<li class="increase-fee-sender grid gap-1">
+                                        <div>
+                                            <div class="label">Address</div>
+                                            <b class="sender__address wrap-around">${address}</b>
+                                        </div>
+                                        <sm-input class="sender__private-key password-field" type="password" placeholder="Private Key" animate required>
+                                            <svg class="icon" slot="icon" xmlns="http://www.w3.org/2000/svg" enable-background="new 0 0 24 24" height="24px" viewBox="0 0 24 24" width="24px" fill="#000000"> <g> <rect fill="none" height="24" width="24"></rect> </g> <g> <path d="M21,10h-8.35C11.83,7.67,9.61,6,7,6c-3.31,0-6,2.69-6,6s2.69,6,6,6c2.61,0,4.83-1.67,5.65-4H13l2,2l2-2l2,2l4-4.04L21,10z M7,15c-1.65,0-3-1.35-3-3c0-1.65,1.35-3,3-3s3,1.35,3,3C10,13.65,8.65,15,7,15z"></path> </g> </svg>
+                                            <label slot="right" class="interact">
+                                                <input type="checkbox" class="hidden" autocomplete="off" readonly="" onchange="togglePrivateKeyVisibility(this)">
+                                                <svg class="icon invisible" xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 0 24 24" width="24px" fill="#000000"> <title>Hide password</title> <path d="M0 0h24v24H0zm0 0h24v24H0zm0 0h24v24H0zm0 0h24v24H0z" fill="none"></path> <path d="M12 7c2.76 0 5 2.24 5 5 0 .65-.13 1.26-.36 1.83l2.92 2.92c1.51-1.26 2.7-2.89 3.43-4.75-1.73-4.39-6-7.5-11-7.5-1.4 0-2.74.25-3.98.7l2.16 2.16C10.74 7.13 11.35 7 12 7zM2 4.27l2.28 2.28.46.46C3.08 8.3 1.78 10.02 1 12c1.73 4.39 6 7.5 11 7.5 1.55 0 3.03-.3 4.38-.84l.42.42L19.73 22 21 20.73 3.27 3 2 4.27zM7.53 9.8l1.55 1.55c-.05.21-.08.43-.08.65 0 1.66 1.34 3 3 3 .22 0 .44-.03.65-.08l1.55 1.55c-.67.33-1.41.53-2.2.53-2.76 0-5-2.24-5-5 0-.79.2-1.53.53-2.2zm4.31-.78l3.15 3.15.02-.16c0-1.66-1.34-3-3-3l-.17.01z"></path> </svg>
+                                                <svg class="icon visible" xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 0 24 24" width="24px" fill="#000000"> <title>Show password</title> <path d="M0 0h24v24H0z" fill="none"></path> <path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"></path> </svg>
+                                            </label>
+                                        </sm-input>
+                                    </li>`)}
+                                </ul>
+                            </div>
+                            <div class="grid gap-0-5">
+                                <h4>Receivers</h4>
+                                <ul class="grid gap-0-5">
+                                    ${Object.entries(uniqueReceivers).map(([address, value]) => html.node/*html*/`<li class="increase-fee-receiver grid gap-1">
+                                        <div>
+                                            <div class="label">Address</div>
+                                            <b class="wrap-around">${address}</b>
+                                        </div>
+                                        <div>
+                                            <div class="label">Amount</div>
+                                            <b>${getConvertedAmount(value, true)}</b>
+                                        </div>
+                                    </li>`)}
+                                </ul>
+                            </div>
+                            <div class="grid gap-0-5">
+                                <p>
+                                    Previous fee: <b>${getConvertedAmount(previousFee, true)}</b>
+                                </p>
+                                <sm-input id="new_fee" placeholder="New fee" type="number" min=${getConvertedAmount(previousFee)} step="0.00000001" error-text=${`New fee should be greater than ${getConvertedAmount(previousFee, true)}`} animate required>
+                                    <div class="currency-symbol flex" slot="icon"> </div>
+                                </sm-input>
+                            </div>
+                            <div class="multi-state-button">
+                                <button id="increase_fee" class="button button--primary" onclick=${increaseFee} type="submit">Increase fee</button>
+                            </div>
+                        </sm-form>
+                    `)
+                }
                 document.getElementById('new_fee').querySelector('.currency-symbol').innerHTML = currencyIcons[selectedCurrency]
                 openPopup('increase_fee_popup')
             } catch (e) {
@@ -2137,7 +2145,11 @@
             })
             console.log(changingFeeOf, newFee, privateKeys)
             try {
-                let signedTxHex = await taprootEditFee(changingFeeOf, newFee, privateKeys)
+                let signedTxHex = await taprootEditFee({
+                    tx_hex: changingFeeOf,
+                    new_fee: newFee,
+                    private_keys: privateKeys
+                })
                 btcOperator.broadcastTx(signedTxHex).then(txId => {
                     console.log(txId)
                     closePopup()
@@ -2250,10 +2262,12 @@
                     amounts = [],
                     fee = 0,
                     isTaprootScriptPath = false,
-                    scriptWitness,
                     userScript,
+                    providedSolutions,
                     signerSecretKey,
                     userControlBlock,
+                    controlBlockVersion,
+                    signaturePlace
                 } = params
                 try {
                     let tr
@@ -2273,7 +2287,10 @@
                     const amountInSat = btcOperator.util.BTC_to_Sat(totalAmount)
                     const [senderBalance, feeRate] = await Promise.all([btcOperator.getBalance(address), btcOperator.getFeeRate()]);
                     let calculatedFee = 0;
-                    const { input_size, consumedUtxoInputs } = await addUTXOs(tx, tr, [address], btcOperator.util.BTC_to_Sat(totalAmount), feeRate)
+                    const { input_size, consumedUtxos = [
+                        { txid: 'c061c23190ed3370ad5206769651eaf6fac6d87d85b5db34e30a74e0c4a6da3e', index: 0, script: tr.script, amount: 550n },
+                        { txid: 'a034026190ed2280ad41069546513af6fac6d87d85b5db34e30a74e0c4a78678', index: 1, script: tr.script, amount: 375n }
+                    ] } = await addUTXOs(tx, tr, [address], btcOperator.util.BTC_to_Sat(totalAmount), feeRate)
                     calculatedFee += input_size
                     // add receivers
                     receivers.forEach((receiver, i) => {
@@ -2292,14 +2309,27 @@
                     //     })
                     tx.addOutputAddress(address, BigInt(btcOperator.util.BTC_to_Sat(changeAmount)));
                     if (isTaprootScriptPath) {
-                        if (signerSecretKey) {
-                            const hash = tx.preimageWitnessV1(0, [script], 0, consumedUtxoInputs, "", userScript, userControlBlock.version)
-                            const sig = secp.schnorr.signSync(hash, signerSecretKey, new Uint8Array(32))
-                        }
-                        tx.inputs.forEach(input => input.finalScriptWitness = scriptWitness)
+                        tx.inputs.forEach((input, index) => {
+                            const scriptWitness = [
+                                userScript,
+                                userControlBlock,
+                            ]
+                            if (providedSolutions && providedSolutions.length)
+                                scriptWitness.unshift(...providedSolutions)
+                            if (signerSecretKey) {
+                                const { amount } = consumedUtxos[index]
+                                const hash = tx.preimageWitnessV1(index, [script], 0, [amount], undefined, userScript, controlBlockVersion)
+                                const sig = secp.schnorr.signSync(hash, signerSecretKey, new Uint8Array(32))
+                                scriptWitness.splice((signaturePlace - 1), 0, sig)
+                            }
+                            input.finalScriptWitness = scriptWitness
+                        })
                     } else {
                         const privKey = coinjs.wif2privkey(senderPrivateKey).privkey;
-                        tx.sign(hex.decode(privKey), undefined, new Uint8Array(32));
+                        const decoded = hex.decode(privKey)
+                        tx.inputs.forEach(input => {
+                            tx.sign(decoded, undefined, new Uint8Array(32));
+                        })
                         tx.finalize()
                     }
                     resolve({ txHex: tx.hex, fee })
@@ -2315,13 +2345,13 @@
                     rec_args.n = 0;
                     rec_args.input_size = 0;
                     rec_args.input_amount = 0;
-                    rec_args.consumedUtxoInputs = [];
+                    rec_args.consumedUtxos = [];
                 }
                 if (required_amount <= 0)
                     return resolve({
                         input_size: rec_args.input_size,
                         input_amount: rec_args.input_amount,
-                        consumedUtxoInputs: rec_args.consumedUtxoInputs,
+                        consumedUtxos: rec_args.consumedUtxos,
                         change_amount: required_amount * -1 //required_amount will be -ve of change_amount
                     });
                 else if (rec_args.n >= senders.length)
@@ -2354,7 +2384,12 @@
                         //update track values
                         rec_args.input_size += size_per_input; // Adjust input size calculation
                         rec_args.input_amount += value;
-                        rec_args.consumedUtxoInputs.push(value);
+                        rec_args.consumedUtxos.push({
+                            txid: input.txid,
+                            index: input.index,
+                            script: input.script,
+                            amount: input.amount
+                        });
                         required_amount -= value;
                         if (fee_rate) //automatic fee calculation (dynamic)
                             required_amount += size_per_input * fee_rate;
@@ -2367,11 +2402,12 @@
             });
         }
 
-        const taprootEditFee = function (tx_hex, new_fee, private_keys, change_only = true) {
+        const taprootEditFee = function ({ tx_hex, new_fee, private_keys, change_only = true }) {
             return new Promise((resolve, reject) => {
                 if (!Array.isArray(private_keys))
                     private_keys = [private_keys];
                 btcOperator.tx_fetch_for_editing(tx_hex).then(tx => {
+                    const isScriptPath = tx.witness.length > 1
                     btcOperator.parseTransaction(tx).then(tx_parsed => {
                         if (tx_parsed.fee >= new_fee)
                             return reject("Fees can only be increased");
@@ -2410,32 +2446,33 @@
                             return reject(`Insufficient output values to increase fee. Maximum fee possible: ${btcOperator.util.Sat_to_BTC(max_possible_fee)}`);
                         }
                         tx.outs = tx.outs.filter(o => o.value >= DUST_AMT); //remove all output with value less than DUST amount
+                        if (isScriptPath) {
 
-                        //remove existing signatures and reset the scripts
-                        let wif_keys = [];
-                        for (let i in tx.ins) {
-                            var addr = tx_parsed.inputs[i].address;
-                            //find the correct key for addr
-                            var privKey = private_keys.find(pk => btcOperator.verifyKey(addr, pk));
-                            if (!privKey)
-                                return reject(`Private key missing for ${addr}`);
+                        } else {
+                            //remove existing signatures and reset the scripts
+                            let wif_keys = [];
+                            for (let i in tx.ins) {
+                                var addr = tx_parsed.inputs[i].address;
+                                //find the correct key for addr
+                                var privKey = private_keys.find(pk => btcOperator.verifyKey(addr, pk));
+                                if (!privKey)
+                                    return reject(`Private key missing for ${addr}`);
+                            }
+                            tx.witness = false; //remove all witness signatures
+                            console.debug("Unsigned:", tx.serialize());
+                            //re-sign the transaction
+                            new Set(wif_keys).forEach(key => {
+                                const privKey = coinjs.wif2privkey(key).privkey;
+                                const privKey_arrayForm = hex.decode(privKey);
+                                tx.sign(privKey_arrayForm, undefined, new Uint8Array(32));
+                            }); //Sign the tx using private key WIF
                         }
-                        tx.witness = false; //remove all witness signatures
-                        console.debug("Unsigned:", tx.serialize());
-                        //re-sign the transaction
-                        new Set(wif_keys).forEach(key => {
-                            const privKey = coinjs.wif2privkey(key).privkey;
-                            const privKey_arrayForm = hex.decode(privKey);
-                            tx.sign(privKey_arrayForm, undefined, new Uint8Array(32));
-                        }); //Sign the tx using private key WIF
                         resolve(tx.serialize());
                     }).catch(error => reject(error))
                 }).catch(error => reject(error))
             })
         }
     </script>
-    <!-- 029000b275209997a497d964fc1a62885b05a51166a65a90df00492c8d7cf61d6accf54803beac -->
-    <!-- a8206c60f404f8167a38fc70eaf8aa17ac351023bef86bcb9d1086a19afe95bd533388204edfcf9dfe6c0b5c83d1ab3f78d1b39a46ebac6798e08e19761f5ed89ec83c10ac -->
 </body>
 
 </html>

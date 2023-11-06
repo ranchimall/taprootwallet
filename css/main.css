@@ -1370,12 +1370,12 @@ body.loaded .nav-item__indicator {
     --width: min(36rem, 100%);
   }
   #send_tx_form::part(form),
-#sender_receiver_form::part(form) {
+#script_tx_step_1_form::part(form) {
     gap: 1rem;
     grid-template-columns: 1fr 1fr;
   }
   #send_tx_form > fieldset,
-#sender_receiver_form > fieldset {
+#script_tx_step_1_form > fieldset {
     align-self: flex-start;
     border-radius: 0.8rem;
     padding: 1.5rem;

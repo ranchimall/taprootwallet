@@ -1276,7 +1276,7 @@ body.loaded .nav-item {
     --width: min(36rem, 100%);
   }
   #send_tx_form,
-  #sender_receiver_form {
+  #script_tx_step_1_form {
     &::part(form) {
       gap: 1rem;
       grid-template-columns: 1fr 1fr;
