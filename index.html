@@ -501,7 +501,7 @@
                 .then(() => {
                     selectedCurrency = localStorage.getItem('taproot-wallet-currency') || 'btc'
                     setTimeout(() => {
-                        document.getElementById('currency_selector').value = selectedCurrency
+                        getRef('currency_selector').value = selectedCurrency
                     }, 100)
                 })
                 .catch(e => {
@@ -2105,15 +2105,13 @@
                                             <svg class="icon visible" xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 0 24 24" width="24px" fill="#000000"> <title>Show password</title> <path d="M0 0h24v24H0z" fill="none"></path> <path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"> </path> </svg>
                                         </label>
                                     </sm-input>
-                                </div>
-                                <div class="grid gap-0-5">
-                                    ${finalScriptWitness.length > 3 ? html`
-                                        <sm-input id="signature_place_input" placeholder="Position of signature. (1, 2, ...)" type="number" min="1" max=${requiredSolutions + 1} error-text=${`Value must be between 1 and ${requiredSolutions + 1}`} animate required></sm-input>
-                                    ` : html`
-                                        <sm-input id="signature_place_input" placeholder="Position of signature" type="number" value="1" readonly animate required></sm-input>
-                                    `}
                                     <p>*The generated signature will be used as one of the solutions.</p>
                                 </div>
+                                ${finalScriptWitness.length > 3 ? html`
+                                    <sm-input id="signature_place_input" placeholder="Position of signature. (1, 2, ...)" type="number" min="1" max=${requiredSolutions + 1} error-text=${`Value must be between 1 and ${requiredSolutions + 1}`} animate required></sm-input>
+                                ` : html`
+                                    <sm-input id="signature_place_input" placeholder="Position of signature" class="hidden" type="number" value="1" readonly animate required></sm-input>
+                                `}
                             ` : ''}
                             <div class="grid gap-0-5">
                                 <p>
@@ -2124,7 +2122,7 @@
                                 </sm-input>
                             </div>
                             <div class="multi-state-button">
-                                <button id="increase_fee" class="button button--primary" onclick=${increaseFee} type="submit" disabled>Increase fee</button>
+                                <button id="increase_fee" class="button button--primary" onclick=${() => increaseFee('script-path')} type="submit" disabled>Increase fee</button>
                             </div>
                         </sm-form>
                     `)
@@ -2174,12 +2172,12 @@
                                 </sm-input>
                             </div>
                             <div class="multi-state-button">
-                                <button id="increase_fee" class="button button--primary" onclick=${increaseFee} type="submit" disabled>Increase fee</button>
+                                <button id="increase_fee" class="button button--primary" onclick=${() => increaseFee('key-path')} type="submit" disabled>Increase fee</button>
                             </div>
                         </sm-form>
                     `)
                 }
-                document.getElementById('new_fee').querySelector('.currency-symbol').innerHTML = currencyIcons[selectedCurrency]
+                getRef('new_fee').querySelector('.currency-symbol').innerHTML = currencyIcons[selectedCurrency]
                 openPopup('increase_fee_popup')
             } catch (e) {
                 console.error(e)
@@ -2187,39 +2185,54 @@
                 buttonLoader(button, false)
             }
         }
-        async function increaseFee() {
-            buttonLoader(document.getElementById('increase_fee'), true)
-            const newFee = parseFloat((parseFloat(document.getElementById('new_fee').value.trim()) / (globalExchangeRate[selectedCurrency] || 1)).toFixed(8))
-            const privateKeys = []
-            document.querySelectorAll('.increase-fee-sender').forEach(sender => {
-                const address = sender.querySelector('.sender__address').textContent.trim()
-                const privateKey = sender.querySelector('.sender__private-key').value.trim()
-                if (!btcOperator.verifyKey(address, privateKey))
-                    return notify(`Invalid private key for address ${address}`, 'error')
-                if (privateKey) {
-                    privateKeys.push(privateKey)
-                }
-            })
-            console.log(changingFeeOf, newFee, privateKeys)
+        async function increaseFee(type = 'key-path') {
             try {
-                let signedTxHex = await taprootEditFee({
-                    txId: changingFeeOf,
-                    new_fee: newFee,
-                    private_keys: privateKeys
-                })
-                btcOperator.broadcastTx(signedTxHex).then(txId => {
+                buttonLoader(getRef('increase_fee'), true)
+                const newFee = parseFloat((parseFloat(getRef('new_fee').value.trim()) / (globalExchangeRate[selectedCurrency] || 1)).toFixed(8))
+                let txHex
+                if (type === 'key-path') {
+                    const privateKeys = []
+                    document.querySelectorAll('.increase-fee-sender').forEach(sender => {
+                        const address = sender.querySelector('.sender__address').textContent.trim()
+                        const privateKey = sender.querySelector('.sender__private-key').value.trim()
+                        if (!btcOperator.verifyKey(address, privateKey))
+                            return notify(`Invalid private key for address ${address}`, 'error')
+                        if (privateKey) {
+                            privateKeys.push(privateKey)
+                        }
+                    })
+                    txHex = await taprootEditFee({
+                        txId: changingFeeOf,
+                        newFee: newFee,
+                        privateKeys
+                    })
+                } else {
+                    const providedSolutions = [...document.querySelectorAll('.solution-input')].map(input => input.value.trim())
+                    const signaturePlace = parseInt(getRef('signature_place_input').value.trim())
+                    const signerPrivateKey = getRef('signer_input') ? getRef('signer_input').value.trim() : null;
+                    const editParams = {
+                        txId: changingFeeOf,
+                        newFee,
+                        providedSolutions,
+                        signaturePlace,
+                    }
+                    if (signerPrivateKey)
+                        editParams.signerSecretKey = hex.decode(coinjs.wif2privkey(signerPrivateKey).privkey)
+                    txHex = await taprootEditFee(editParams)
+                }
+                btcOperator.broadcastTx(txHex).then(txId => {
                     console.log(txId)
                     closePopup()
                     showTransactionResult('success', txId)
                 }).catch(e => {
                     notify(e, 'error')
                 }).finally(_ => {
-                    buttonLoader(document.getElementById('increase_fee'), false)
+                    buttonLoader(getRef('increase_fee'), false)
                     changingFeeOf = null
                 })
             } catch (err) {
                 notify(e, 'error')
-                buttonLoader(document.getElementById('increase_fee'), false)
+                buttonLoader(getRef('increase_fee'), false)
             }
         }
         router.addRoute('create', state => {
@@ -2487,29 +2500,27 @@
             })
         }
 
-        const taprootEditFee = function ({ txId, new_fee, private_keys, change_only = true }) {
+        const taprootEditFee = function ({ txId, newFee, privateKeys, changeOnly = true, signerSecretKey, providedSolutions, signaturePlace }) {
             return new Promise((resolve, reject) => {
-                if (!Array.isArray(private_keys))
-                    private_keys = [private_keys];
                 getTaprootTx(txId).then(({ tx, rawTx }) => {
                     const isScriptPath = tx.inputs[0].finalScriptWitness && tx.inputs[0].finalScriptWitness.length > 1;
                     const parsedTx = parseTransaction(rawTx)
-                    if (parsedTx.fee >= new_fee)
+                    if (parsedTx.fee >= newFee)
                         return reject("Fees can only be increased");
 
                     //editable addresses in output values (for fee increase)
-                    parsedTx edit_output_address = new Set();
-                    if (change_only === true) //allow only change values (ie, sender address) to be edited to inc fee
+                    const edit_output_address = new Set();
+                    if (changeOnly === true) //allow only change values (ie, sender address) to be edited to inc fee
                         parsedTx.inputs.forEach(inp => edit_output_address.add(inp.address));
-                    else if (change_only === false) //allow all output values to be edited
+                    else if (changeOnly === false) //allow all output values to be edited
                         parsedTx.outputs.forEach(out => edit_output_address.add(out.address));
-                    else if (typeof change_only == 'string') // allow only given receiver id output to be edited
-                        edit_output_address.add(change_only);
-                    else if (Array.isArray(change_only))    //allow only given set of receiver id outputs to be edited
-                        change_only.forEach(id => edit_output_address.add(id));
+                    else if (typeof changeOnly == 'string') // allow only given receiver id output to be edited
+                        edit_output_address.add(changeOnly);
+                    else if (Array.isArray(changeOnly))    //allow only given set of receiver id outputs to be edited
+                        changeOnly.forEach(id => edit_output_address.add(id));
 
                     //edit output values to increase fee
-                    let inc_fee = btcOperator.util.BTC_to_Sat(new_fee - parsedTx.fee);
+                    let inc_fee = btcOperator.util.BTC_to_Sat(newFee - parsedTx.fee);
                     if (inc_fee < MIN_FEE_UPDATE)
                         return reject(`Insufficient additional fee. Minimum increment: ${MIN_FEE_UPDATE}`);
                     for (let i = tx.outs.length - 1; i >= 0 && inc_fee > 0; i--)   //reduce in reverse order
@@ -2527,19 +2538,36 @@
                             }
                         }
                     if (inc_fee > 0) {
-                        let max_possible_fee = btcOperator.util.BTC_to_Sat(new_fee) - inc_fee; //in satoshi
+                        let max_possible_fee = btcOperator.util.BTC_to_Sat(newFee) - inc_fee; //in satoshi
                         return reject(`Insufficient output values to increase fee. Maximum fee possible: ${btcOperator.util.Sat_to_BTC(max_possible_fee)}`);
                     }
                     tx.outs = tx.outs.filter(o => o.value >= DUST_AMT); //remove all output with value less than DUST amount
                     if (isScriptPath) {
-
+                        tx.inputs.forEach((input, index) => {
+                            // remove every element from the finalScriptWitness except the last two
+                            const scriptWitness = input.finalScriptWitness.slice(-2)
+                            const [userScript, controlBlock] = scriptWitness;
+                            const controlBlockVersion = taproot.TaprootControlBlock.decode(controlBlock).version
+                            const providedSolutions = scriptWitness.slice(0, -1)
+                            if (providedSolutions && providedSolutions.length)
+                                scriptWitness.unshift(...providedSolutions)
+                            if (signerSecretKey) {
+                                const { amount } = consumedUtxos[index]
+                                const hash = tx.preimageWitnessV1(index, [script], 0, [amount], undefined, userScript, controlBlockVersion)
+                                const sig = secp.schnorr.signSync(hash, signerSecretKey, new Uint8Array(32))
+                                scriptWitness.splice((signaturePlace - 1), 0, sig)
+                            }
+                            input.finalScriptWitness = scriptWitness
+                        })
                     } else {
                         //remove existing signatures and reset the scripts
+                        if (!Array.isArray(privateKeys))
+                            privateKeys = [privateKeys];
                         let wif_keys = [];
                         for (let i in tx.ins) {
                             const addr = parsedTx.inputs[i].address;
                             //find the correct key for addr
-                            const privKey = private_keys.find(pk => btcOperator.verifyKey(addr, pk));
+                            const privKey = privateKeys.find(pk => btcOperator.verifyKey(addr, pk));
                             if (!privKey)
                                 return reject(`Private key missing for ${addr}`);
                         }
