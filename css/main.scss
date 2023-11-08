@@ -212,8 +212,10 @@ details[open] {
     transform: rotate(180deg);
   }
 }
-fieldset {
-  border: none;
+sm-form {
+  fieldset {
+    border: none;
+  }
 }
 sm-input {
   --border-radius: 0.5rem;
@@ -1200,6 +1202,30 @@ body.loaded .nav-item {
     }
     &::after {
       background-color: var(--accent-color);
+    }
+  }
+}
+#generate_script_path_address_popup {
+  fieldset {
+    padding: 1rem;
+    border-radius: 0.5rem;
+    border: solid thin rgba(var(--text-color), 0.3);
+    legend {
+      font-size: 0.9rem;
+      font-weight: 500;
+      padding: 0 0.5rem;
+      margin-left: -0.5rem;
+    }
+  }
+  .taproot-member {
+    sm-copy {
+      font-weight: 500;
+      font-size: 0.9rem;
+    }
+    &:not(:last-of-type) {
+      padding-bottom: 1rem;
+      margin-bottom: 0.5rem;
+      border-bottom: solid thin rgba(var(--text-color), 0.3);
     }
   }
 }

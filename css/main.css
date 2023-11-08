@@ -233,7 +233,7 @@ details[open] > summary .down-arrow {
   transform: rotate(180deg);
 }
 
-fieldset {
+sm-form fieldset {
   border: none;
 }
 
@@ -1296,6 +1296,27 @@ body.loaded .nav-item__indicator {
 }
 .step.done::after {
   background-color: var(--accent-color);
+}
+
+#generate_script_path_address_popup fieldset {
+  padding: 1rem;
+  border-radius: 0.5rem;
+  border: solid thin rgba(var(--text-color), 0.3);
+}
+#generate_script_path_address_popup fieldset legend {
+  font-size: 0.9rem;
+  font-weight: 500;
+  padding: 0 0.5rem;
+  margin-left: -0.5rem;
+}
+#generate_script_path_address_popup .taproot-member sm-copy {
+  font-weight: 500;
+  font-size: 0.9rem;
+}
+#generate_script_path_address_popup .taproot-member:not(:last-of-type) {
+  padding-bottom: 1rem;
+  margin-bottom: 0.5rem;
+  border-bottom: solid thin rgba(var(--text-color), 0.3);
 }
 
 @media only screen and (max-width: 640px) {

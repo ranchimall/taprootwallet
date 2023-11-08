@@ -149,7 +149,7 @@
                 </button>
             </div>
         </header>
-        <div id="generate_script_path_address_popup__content"></div>
+        <div id="generate_script_path_address_popup__content" class="grid gap-2"></div>
     </sm-popup>
     <sm-popup id="convert_to_taproot_popup">
         <header slot="header" class="popup__header">
@@ -296,7 +296,6 @@
                 case 'generate_script_path_address_popup': {
                     const { wif, tr: { address } } = getTaprootAddress()
                     const privateKey = coinjs.wif2privkey(wif).privkey
-                    console.log(wif, address)
                     const scriptInputs = [1];
                     const renderScriptInput = (index) => html`
                         <div class="flex gap-0-5">
@@ -318,23 +317,44 @@
                     }
                     function generateScriptPathAddress() {
                         const schnorrPublicKey = secp256k1_schnorr.getPublicKey(hex.decode(privateKey));
-                        const taprootTree = [...document.querySelectorAll('.member-script-input')].map(input => {
+                        let memberScripts = [...document.querySelectorAll('.member-script-input')].map(input => input.value.trim());
+                        memberScripts = [...new Set(memberScripts)] // remove duplicates
+                        const taprootTree = memberScripts.map(script => {
                             return {
-                                script: input.value.trim(),
+                                script,
                                 leafVersion: 0xc0,
                             }
                         })
-                        const { address } = taproot.p2tr(
+                        const { address, leaves } = taproot.p2tr(
                             schnorrPublicKey,
                             taprootTree,
                             undefined,
                             true
                         );
+
                         renderElem(getRef('generate_script_path_address_popup__content'), html`
-                            <div class="grid gap-1">
-                                <h4>Generated Taproot script-path address</h4>
-                                <sm-copy value="${address}"></sm-copy>
-                            </div>
+                            <fieldset class="grid gap-0-5">
+                                <legend>Taproot script-path address</legend>
+                                <sm-copy value="${address}"><b>${address}</b></sm-copy>
+                            </fieldset>
+                            <fieldset class="grid gap-0-5">
+                                <legend>Members</legend>
+                                <ul class="grid gap-0-5">
+                                    ${leaves.map((leaf, index) => html`
+                                        <li class="grid gap-1 taproot-member">
+                                            <h5>Member #${index + 1}</h5>
+                                            <div class="grid">
+                                                <p class="label">Script</p>
+                                                <sm-copy value="${hex.encode(leaf.script)}"></sm-copy>
+                                            </div>
+                                            <div class="grid">
+                                                <p class="label">Control block</p>
+                                                <sm-copy value="${hex.encode(leaf.controlBlock)}"></sm-copy>
+                                            </div>
+                                        </li>
+                                    `)}
+                                </ul>
+                            </fieldset>
                         `);
                     }
                     function renderScriptInputList() {
