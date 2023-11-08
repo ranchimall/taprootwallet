@@ -1338,8 +1338,8 @@
         const [suggestedFeeStatus, setSuggestedFeeStatus] = $signal(['idle'])
         const [feeType, setFeeType] = $signal('suggested')
         const [atTaprootStep, setAtTaprootStep] = $signal(1);
-        const [spendingType, setSpendingType] = $signal('key-path');
         router.addRoute('send', (state) => {
+            let { params: { type = 'key-path' } } = state
             const [isSignRequired, setIsSignRequired] = $signal(false)
             const renderSendPage = () => {
                 let feeSection = ''
@@ -1363,7 +1363,7 @@
                     `
                 }
                 let form = '';
-                if (spendingType() === 'script-path') {
+                if (type === 'script-path') {
                     switch (atTaprootStep()) {
                         case 1:
                             form = html`
@@ -1511,12 +1511,12 @@
                             <h3>
                                 Perform Transaction
                             </h3>
-                            <sm-chips onchange=${e => setSpendingType(e.target.value)}>
-                                <sm-chip value="key-path" ?selected=${spendingType() === 'key-path'}>Key-path</sm-chip>
-                                <sm-chip value="script-path" ?selected=${spendingType() === 'script-path'}>Script-path</sm-chip>
+                            <sm-chips onchange=${e => location.hash = `/send?type=${e.target.value}`}>
+                                <sm-chip value="key-path" ?selected=${type === 'key-path'}>Key-path</sm-chip>
+                                <sm-chip value="script-path" ?selected=${type === 'script-path'}>Script-path</sm-chip>
                             </sm-chips>
                         </div>
-                        ${spendingType() === 'script-path' ? html`
+                        ${type === 'script-path' ? html`
                             <ul id="taproot_steps" class="steps">
                                 ${[1, 2].map(step => html`
                                     <li class=${`step ${atTaprootStep() === step ? 'active' : ''} ${atTaprootStep() > step ? 'done' : ''}`}></li>
