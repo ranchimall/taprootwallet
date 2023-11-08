@@ -277,6 +277,14 @@
             popupStack.peek().popup.hide()
         }
 
+        function copyToClipboard(data) {
+            navigator.clipboard.writeText(data).then(() => {
+                notify('Copied to clipboard', 'success')
+            }).catch(() => {
+                notify('Failed to copy to clipboard', 'error')
+            })
+        }
+
         document.addEventListener('popupopened', e => {
             switch (e.target.id) {
                 case 'generate_key_path_address_popup': {
@@ -335,21 +343,26 @@
                         renderElem(getRef('generate_script_path_address_popup__content'), html`
                             <fieldset class="grid gap-0-5">
                                 <legend>Taproot script-path address</legend>
-                                <sm-copy value="${address}"><b>${address}</b></sm-copy>
+                                <b class="wrap-around fw-500" style="font-size:0.9rem">${address}</b>
                             </fieldset>
                             <fieldset class="grid gap-0-5">
                                 <legend>Members</legend>
                                 <ul class="grid gap-0-5">
                                     ${leaves.map((leaf, index) => html`
                                         <li class="grid gap-1 taproot-member">
-                                            <h5>Member #${index + 1}</h5>
+                                            <div class="flex align-center space-between">
+                                                <h5>Member #${index + 1}</h5>
+                                                <button class="copy-button" onclick=${() => copyToClipboard(`Member #${index + 1}\n\nScript: ${hex.encode(leaf.script)}\n\nControl block: ${hex.encode(leaf.controlBlock)}`)}>
+                                                    COPY
+                                                </button>
+                                            </div>
                                             <div class="grid">
                                                 <p class="label">Script</p>
-                                                <sm-copy value="${hex.encode(leaf.script)}"></sm-copy>
+                                                <b class="wrap-around" style="font-size:0.9rem">${hex.encode(leaf.script)}</b>
                                             </div>
                                             <div class="grid">
                                                 <p class="label">Control block</p>
-                                                <sm-copy value="${hex.encode(leaf.controlBlock)}"></sm-copy>
+                                                <b class="wrap-around" style="font-size:0.9rem">${hex.encode(leaf.controlBlock)}</b>
                                             </div>
                                         </li>
                                     `)}

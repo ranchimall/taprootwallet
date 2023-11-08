@@ -470,6 +470,10 @@ ul {
   height: 100%;
 }
 
+.fw-500 {
+  font-weight: 500;
+}
+
 .padding-block-1 {
   padding-block: 1rem;
 }
@@ -584,6 +588,20 @@ ul {
 
 .ws-pre-line {
   white-space: pre-line;
+}
+
+.copy-button {
+  display: inline-flex;
+  justify-content: center;
+  cursor: pointer;
+  border: none;
+  padding: 0.4rem;
+  background-color: rgba(var(--text-color, 17, 17, 17), 0.06);
+  border-radius: var(--button-border-radius, 0.3rem);
+  font-size: 0.7rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.05rem;
 }
 
 .card {
